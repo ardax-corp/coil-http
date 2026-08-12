@@ -1,0 +1,46 @@
+# Client API
+
+## Client
+
+```coil
+use http::client::Client;
+
+let c = Client::new();
+c.get("http://example.com/")?;
+c.post("http://example.com/", body_bytes)?;
+c.no_pool();  // Connection: close, no reuse
+```
+
+`Client::new()` enables connection pooling with `Connection: keep-alive`. Call `no_pool()` for one-shot requests (matches legacy `Connection: close` behavior).
+
+## Request builder
+
+```coil
+use http::request::Request;
+
+let req = Request::new();
+req.method("PUT");
+req.url("http://example.com/x");
+req.header("X-Trace", "abc");
+req.body(body);
+c.send(req)?;
+```
+
+## Response
+
+```coil
+use http::response::{Response, parse_response, header_get};
+
+let r = Response::ok();
+r.status(201);
+r.header("Content-Type", "text/plain");
+r.body(to_bytes("hi"));
+```
+
+Parsed responses expose `status`, `body`, and `header_get(r, "Name")`.
+
+## Errors
+
+`HttpError`: `BadUrl`, `BadResponse`, `UnsupportedScheme`, `Io`, `NotSupported`.
+
+HTTPS uses verified TLS (`webpki` roots). Local dev certs need raw `io::net::tls::client::enable`.

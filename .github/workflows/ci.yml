@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: coil-http
+
+      - uses: actions/checkout@v4
+        with:
+          repository: ardax-corp/coil-lang
+          path: coil-lang
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build coil
+        working-directory: coil-lang
+        run: cargo build
+
+      - name: Run coil-http tests
+        working-directory: coil-http
+        run: ../coil-lang/target/debug/coil test
+
+      - name: Loopback integration (threads; not available in test harness)
+        working-directory: coil-http
+        run: ../coil-lang/target/debug/coil examples/loopback.hy | grep -q ok
