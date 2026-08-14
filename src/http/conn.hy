@@ -10,12 +10,24 @@ class HttpConn {
     inner: Stream,
     leftover: Vec<byte>,
     reusable: int,
+    closed: int,
+}
+
+fn close_conn(HttpConn c) {
+    if c.closed == 1 {
+        return;
+    }
+    c.closed = 1;
+    match close(c.inner) {
+        Result::Ok(_) => 0,
+        Result::Err(_) => 0,
+    };
 }
 
 impl HttpConn {
     static fn wrap(Stream s) -> HttpConn {
         let leftover: Vec<byte> = Vec::new();
-        return new HttpConn(s, leftover, 1);
+        return new HttpConn(s, leftover, 1, 0);
     }
 
     fn stream() -> Stream {
@@ -24,6 +36,17 @@ impl HttpConn {
 
     fn can_reuse() -> int {
         return self.reusable;
+    }
+
+    fn drop() {
+        if self.closed == 0 {
+            self.closed = 1;
+            match close(self.inner) {
+                Result::Ok(_) => 0,
+                Result::Err(_) => 0,
+            };
+        }
+        self.closed = self.closed;
     }
 }
 
@@ -247,11 +270,4 @@ fn read_http_message(HttpConn c) -> Result<Vec<byte>, HttpError> {
 fn read_request_bytes(Stream s) -> Result<Vec<byte>, HttpError> {
     let c = HttpConn::wrap(s);
     return read_http_message(c)?;
-}
-
-fn close_conn(HttpConn c) {
-    match close(c.inner) {
-        Result::Ok(_) => 0,
-        Result::Err(_) => 0,
-    };
 }
