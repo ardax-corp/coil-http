@@ -1,5 +1,6 @@
 // HTTP/1.1 response parse and builder.
 use io::{to_bytes};
+use ascii::{hex_digit, hex_val};
 use http::url::{
     HttpError,
     Headers,
@@ -216,24 +217,25 @@ fn content_length_from(Vec<string> names, Vec<string> values) -> Result<int, Htt
     return 999999;
 }
 
-/// Parse raw HTTP/1.1 response bytes into `Response`.
-fn parse_response(Vec<byte> raw) -> Result<Response, HttpError> {
-    let sep = find_header_end(raw);
-    if sep == 999999 {
-        http_err_bad_response()?;
+fn transfer_encoding_is_chunked(Vec<string> names, Vec<string> values) -> int {
+    let i = 0;
+    while i < len(names) {
+        if header_name_eq_ci(names[i], "Transfer-Encoding") == 1 {
+            if header_name_eq_ci(values[i], "chunked") == 1 {
+                return 1;
+            }
+        }
+        i = i + 1;
     }
-    let header_bytes = bytes_slice_resp(raw, 0, sep);
-    let rest = bytes_slice_resp(raw, sep + 4, len(raw));
+    return 0;
+}
 
-    let status = parse_status_line(header_bytes)?;
-
-    let names: Vec<string> = Vec::new();
-    let values: Vec<string> = Vec::new();
+fn collect_header_pairs(Vec<byte> header_bytes, Vec<string> names, Vec<string> values) -> Result<int, HttpError> {
     let eol0 = find_crlf(header_bytes, 0);
-    let pos = 0;
-    if eol0 != 999999 {
-        pos = eol0 + 2;
+    if eol0 == 999999 {
+        return 0;
     }
+    let pos = eol0 + 2;
     let n = len(header_bytes);
     while pos < n {
         let eol = find_crlf(header_bytes, pos);
@@ -250,6 +252,216 @@ fn parse_response(Vec<byte> raw) -> Result<Response, HttpError> {
         } else {
             pos = eol + 2;
         }
+    }
+    return 0;
+}
+
+fn parse_chunk_size_line(Vec<byte> line) -> Result<int, HttpError> {
+    let n = len(line);
+    if n == 0 {
+        http_err_bad_response()?;
+    }
+    let v = 0;
+    let i = 0;
+    let saw = 0;
+    while i < n {
+        let c = line[i];
+        if c == (";" as byte) {
+            break;
+        }
+        if c == (" " as byte) {
+            break;
+        }
+        let d = hex_val(c);
+        if d < 0 {
+            http_err_bad_response()?;
+        }
+        v = v * 16 + d;
+        saw = 1;
+        i = i + 1;
+    }
+    if saw == 0 {
+        http_err_bad_response()?;
+    }
+    return v;
+}
+
+fn int_to_hex(int n) -> string {
+    if n == 0 {
+        return "0";
+    }
+    let digits: Vec<byte> = Vec::new();
+    let x = n;
+    while x > 0 {
+        digits.push(hex_digit(x % 16));
+        x = x / 16;
+    }
+    let out: Vec<byte> = Vec::new();
+    let i = 0;
+    let dn = len(digits);
+    while i < dn {
+        out.push(digits[dn - 1 - i]);
+        i = i + 1;
+    }
+    return match bytes_to_string(out) {
+        Result::Ok(s) => s,
+        Result::Err(_) => "0",
+    };
+}
+
+fn crlf_bytes() -> Vec<byte> {
+    let b: Vec<byte> = Vec::new();
+    b.push("\r");
+    b.push("\n");
+    return b;
+}
+
+/// Parse chunked `raw` into `out`. Returns byte count consumed, including the last chunk and trailers.
+fn decode_chunked_into(Vec<byte> raw, Vec<byte> out) -> Result<int, HttpError> {
+    let pos = 0;
+    let n = len(raw);
+    let crlf = crlf_bytes();
+    while pos < n {
+        let eol = find_crlf(raw, pos);
+        if eol == 999999 {
+            http_err_bad_response()?;
+        }
+        let line = bytes_slice_resp(raw, pos, eol);
+        let size = parse_chunk_size_line(line)?;
+        pos = eol + 2;
+        if size == 0 {
+            while pos < n {
+                let teol = find_crlf(raw, pos);
+                if teol == 999999 {
+                    http_err_bad_response()?;
+                }
+                if teol == pos {
+                    return teol + 2;
+                }
+                pos = teol + 2;
+            }
+            http_err_bad_response()?;
+        }
+        if pos + size + 2 > n {
+            http_err_bad_response()?;
+        }
+        let chunk = bytes_slice_resp(raw, pos, pos + size);
+        let j = 0;
+        while j < size {
+            out.push(chunk[j]);
+            j = j + 1;
+        }
+        pos = pos + size;
+        if raw[pos] != crlf[0] {
+            http_err_bad_response()?;
+        }
+        if raw[pos + 1] != crlf[1] {
+            http_err_bad_response()?;
+        }
+        pos = pos + 2;
+    }
+    http_err_bad_response()?;
+    return 0;
+}
+
+/// Decode a chunked body (no headers). Returns decoded bytes. Truncated input errors.
+fn decode_chunked_body(Vec<byte> raw) -> Result<Vec<byte>, HttpError> {
+    let out: Vec<byte> = Vec::new();
+    decode_chunked_into(raw, out)?;
+    return out;
+}
+
+/// Encode `body` as one chunk plus a terminating zero chunk.
+fn encode_chunked_body(Vec<byte> body) -> Result<Vec<byte>, HttpError> {
+    let hex = int_to_hex(len(body));
+    let out = to_bytes(hex);
+    let crlf = crlf_bytes();
+    let i = 0;
+    while i < 2 {
+        out.push(crlf[i]);
+        i = i + 1;
+    }
+    let j = 0;
+    while j < len(body) {
+        out.push(body[j]);
+        j = j + 1;
+    }
+    let k = 0;
+    while k < 2 {
+        out.push(crlf[k]);
+        k = k + 1;
+    }
+    out.push("0");
+    let m = 0;
+    while m < 2 {
+        out.push(crlf[m]);
+        m = m + 1;
+    }
+    let p = 0;
+    while p < 2 {
+        out.push(crlf[p]);
+        p = p + 1;
+    }
+    return out;
+}
+
+/// Exclusive end index of the first HTTP/1.1 message in `raw` (headers + Content-Length or chunked body).
+fn http_framed_end(Vec<byte> raw) -> Result<int, HttpError> {
+    let sep = find_header_end(raw);
+    if sep == 999999 {
+        http_err_bad_response()?;
+    }
+    let header_bytes = bytes_slice_resp(raw, 0, sep);
+    let names: Vec<string> = Vec::new();
+    let values: Vec<string> = Vec::new();
+    collect_header_pairs(header_bytes, names, values)?;
+    if transfer_encoding_is_chunked(names, values) == 1 {
+        let rest = bytes_slice_resp(raw, sep + 4, len(raw));
+        let dump: Vec<byte> = Vec::new();
+        let n = decode_chunked_into(rest, dump)?;
+        return sep + 4 + n;
+    }
+    let content_length = content_length_from(names, values)?;
+    let end = sep + 4;
+    if content_length != 999999 {
+        end = sep + 4 + content_length;
+        if end > len(raw) {
+            http_err_bad_response()?;
+        }
+    }
+    return end;
+}
+
+/// Body length from a header block (no trailing CRLFCRLF required).
+/// `999999` = no Content-Length (empty body for keep-alive). `999998` = chunked (not framed here).
+fn header_block_body_len(Vec<byte> header_bytes) -> Result<int, HttpError> {
+    let names: Vec<string> = Vec::new();
+    let values: Vec<string> = Vec::new();
+    collect_header_pairs(header_bytes, names, values)?;
+    if transfer_encoding_is_chunked(names, values) == 1 {
+        return 999998;
+    }
+    return content_length_from(names, values)?;
+}
+
+/// Parse raw HTTP/1.1 response bytes into `Response`.
+fn parse_response(Vec<byte> raw) -> Result<Response, HttpError> {
+    let sep = find_header_end(raw);
+    if sep == 999999 {
+        http_err_bad_response()?;
+    }
+    let header_bytes = bytes_slice_resp(raw, 0, sep);
+    let rest = bytes_slice_resp(raw, sep + 4, len(raw));
+
+    let status = parse_status_line(header_bytes)?;
+
+    let names: Vec<string> = Vec::new();
+    let values: Vec<string> = Vec::new();
+    collect_header_pairs(header_bytes, names, values)?;
+
+    if transfer_encoding_is_chunked(names, values) == 1 {
+        let body = decode_chunked_body(rest)?;
+        return make_response(status, names, values, body);
     }
 
     let content_length = content_length_from(names, values)?;

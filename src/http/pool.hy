@@ -12,18 +12,19 @@ use http::url::{
     url_port,
     url_scheme,
 };
+use http::conn::{HttpConn, close_conn};
 
 class ConnPool {
     keys: Vec<string>,
-    streams: Vec<Stream>,
+    conns: Vec<HttpConn>,
     max_size: int,
 }
 
 impl ConnPool {
     static fn new() -> ConnPool {
         let keys: Vec<string> = Vec::new();
-        let streams: Vec<Stream> = Vec::new();
-        return new ConnPool(keys, streams, 4);
+        let conns: Vec<HttpConn> = Vec::new();
+        return new ConnPool(keys, conns, 4);
     }
 
     fn max(int n) {
@@ -67,57 +68,49 @@ impl ConnPool {
         return http_fail_stream()?;
     }
 
-    fn acquire(Url u) -> Result<Stream, HttpError> {
+    fn acquire(Url u) -> Result<HttpConn, HttpError> {
         let key = self.pool_key(u);
         let i = 0;
         let n = len(self.keys);
         while i < n {
             if self.keys[i] == key {
-                let s = self.streams[i];
+                let c = self.conns[i];
                 let last = n - 1;
                 if i < last {
                     self.keys[i] = self.keys[last];
-                    self.streams[i] = self.streams[last];
+                    self.conns[i] = self.conns[last];
                 }
                 self.keys.pop();
-                self.streams.pop();
-                return s;
+                self.conns.pop();
+                return c;
             }
             i = i + 1;
         }
-        return self.open_stream(u)?;
+        let s = self.open_stream(u)?;
+        return HttpConn::wrap(s);
     }
 
-    fn release(Url u, Stream s) {
-        if len(self.streams) >= self.max_size {
-            match close(s) {
-                Result::Ok(_) => 0,
-                Result::Err(_) => 0,
-            };
+    fn release(Url u, HttpConn c) {
+        if len(self.conns) >= self.max_size {
+            close_conn(c);
             return;
         }
         let key = self.pool_key(u);
         self.keys.push(key);
-        self.streams.push(s);
+        self.conns.push(c);
     }
 
-    fn discard(Stream s) {
-        match close(s) {
-            Result::Ok(_) => 0,
-            Result::Err(_) => 0,
-        };
+    fn discard(HttpConn c) {
+        close_conn(c);
     }
 
     fn clear() {
         let i = 0;
-        while i < len(self.streams) {
-            match close(self.streams[i]) {
-                Result::Ok(_) => 0,
-                Result::Err(_) => 0,
-            };
+        while i < len(self.conns) {
+            close_conn(self.conns[i]);
             i = i + 1;
         }
         self.keys.clear();
-        self.streams.clear();
+        self.conns.clear();
     }
 }

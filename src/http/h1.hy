@@ -10,7 +10,7 @@ use http::url::{
     http_err_bad_response,
 };
 use http::request::{concat_bytes};
-use http::response::{Response, find_crlf, find_header_end, bytes_slice_resp, parse_int_bytes};
+use http::response::{Response, find_crlf, find_header_end, bytes_slice_resp, parse_int_bytes, decode_chunked_body as resp_decode_chunked, encode_chunked_body as resp_encode_chunked, transfer_encoding_is_chunked};
 
 /// Parsed inbound HTTP/1.1 request (server side).
 class IncomingRequest {
@@ -153,12 +153,16 @@ fn parse_request(Vec<byte> raw) -> Result<IncomingRequest, HttpError> {
 
     let cl = incoming_content_length(headers)?;
     let body = rest;
-    if cl != 999999 {
-        if cl > len(rest) {
-            http_err_bad_response()?;
-        }
-        if cl < len(rest) {
-            body = bytes_slice_resp(rest, 0, cl);
+    if transfer_encoding_is_chunked(headers.names, headers.values) == 1 {
+        body = resp_decode_chunked(rest)?;
+    } else {
+        if cl != 999999 {
+            if cl > len(rest) {
+                http_err_bad_response()?;
+            }
+            if cl < len(rest) {
+                body = bytes_slice_resp(rest, 0, cl);
+            }
         }
     }
     return new IncomingRequest(method, path, version, headers, body);
@@ -210,22 +214,80 @@ fn build_response_head_keepalive(Response r) -> Vec<byte> {
     return to_bytes(acc);
 }
 
+fn response_wants_chunked(Response r) -> int {
+    return transfer_encoding_is_chunked(r.header_names, r.header_values);
+}
+
+fn build_response_head_chunked(Response r, int keep_alive) -> Vec<byte> {
+    let status = r.status;
+    let reason = "OK";
+    if status == 404 {
+        reason = "Not Found";
+    } else if status == 500 {
+        reason = "Internal Server Error";
+    } else if status == 204 {
+        reason = "No Content";
+    } else if status == 201 {
+        reason = "Created";
+    }
+    let conn = "close";
+    if keep_alive == 1 {
+        conn = "keep-alive";
+    }
+    let head = "HTTP/1.1 " + int_to_dec(status) + " " + reason + "\r\n";
+    let i = 0;
+    let acc = head;
+    let n = len(r.header_names);
+    let saw_te = 0;
+    while i < n {
+        acc = acc + r.header_names[i] + ": " + r.header_values[i] + "\r\n";
+        if header_name_eq_ci(r.header_names[i], "Transfer-Encoding") == 1 {
+            saw_te = 1;
+        }
+        i = i + 1;
+    }
+    if saw_te == 0 {
+        acc = acc + "Transfer-Encoding: chunked\r\n";
+    }
+    acc = acc + "Connection: " + conn + "\r\n\r\n";
+    return to_bytes(acc);
+}
+
 /// Encode response status line + headers + body for the wire.
 fn encode_response(Response r) -> Vec<byte> {
+    if response_wants_chunked(r) == 1 {
+        let head = build_response_head_chunked(r, 0);
+        let body = match resp_encode_chunked(r.body) {
+            Result::Ok(b) => b,
+            Result::Err(_) => r.body,
+        };
+        return concat_bytes(head, body);
+    }
     let head = build_response_head(r);
     return concat_bytes(head, r.body);
 }
 
-/// Chunked transfer-encoding is not supported in v1; returns Err.
-fn decode_chunked_body(Vec<byte> raw) -> Result<Vec<byte>, HttpError> {
-    http_err_bad_response()?;
-    return raw;
+fn encode_response_keepalive(Response r) -> Vec<byte> {
+    if response_wants_chunked(r) == 1 {
+        let head = build_response_head_chunked(r, 1);
+        let body = match resp_encode_chunked(r.body) {
+            Result::Ok(b) => b,
+            Result::Err(_) => r.body,
+        };
+        return concat_bytes(head, body);
+    }
+    let head = build_response_head_keepalive(r);
+    return concat_bytes(head, r.body);
 }
 
-/// Chunked transfer-encoding is not supported in v1; returns Err.
+/// Decode HTTP/1.1 chunked body bytes (hex sizes, last chunk `0`, trailers skipped).
+fn decode_chunked_body(Vec<byte> raw) -> Result<Vec<byte>, HttpError> {
+    return resp_decode_chunked(raw)?;
+}
+
+/// Encode `body` as a single chunk plus a terminating zero chunk.
 fn encode_chunked_body(Vec<byte> body) -> Result<Vec<byte>, HttpError> {
-    http_err_bad_response()?;
-    return body;
+    return resp_encode_chunked(body)?;
 }
 
 fn incoming_wants_close(IncomingRequest req) -> int {
