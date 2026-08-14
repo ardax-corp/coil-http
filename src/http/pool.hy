@@ -113,4 +113,9 @@ impl ConnPool {
         self.keys.clear();
         self.conns.clear();
     }
+
+    fn drop() {
+        self.clear();
+        self.max_size = self.max_size;
+    }
 }

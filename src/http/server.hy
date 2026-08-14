@@ -66,6 +66,21 @@ impl Server {
         let (_, port) = addr;
         return port;
     }
+
+    fn drop() {
+        match self.listener {
+            Option::None => 0,
+            Option::Some(s) => {
+                match close(s) {
+                    Result::Ok(_) => 0,
+                    Result::Err(_) => 0,
+                };
+                self.listener = Option::None;
+                0
+            },
+        };
+        self.use_tls = self.use_tls;
+    }
 }
 
 fn serve_conn_once<H: HttpHandler>(Server srv, Stream s, H handler) -> Result<(), HttpError> {

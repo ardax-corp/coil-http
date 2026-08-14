@@ -50,6 +50,11 @@ impl Client {
         self.pool.clear();
     }
 
+    fn drop() {
+        self.close();
+        self.use_pool = self.use_pool;
+    }
+
     fn request_send(Vec<byte> head, Url u, Vec<byte> body) -> Result<Response, HttpError> {
         let msg = concat_bytes(head, body);
         let c = self.pool.acquire(u)?;
