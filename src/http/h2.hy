@@ -1,9 +1,23 @@
-// HTTP/2 framing (RFC 7540 §4). HPACK static table is in http::hpack.
-// In-memory mux lives in http::h2_session; h2_connect / h2_serve stay NotSupported.
+// HTTP/2 framing (RFC 7540 §4) and cleartext prior-knowledge (RFC 7540 §3.4).
+// HPACK static table is in http::hpack. In-memory mux lives in http::h2_session.
+// HTTPS / ALPN h2 is still NotSupported.
+use conv::{int_to_dec};
 use http::hpack::{decode_header_block, encode_header_block};
-use http::url::{HttpError, Headers, http_err_bad_response, http_err_not_supported};
-use http::response::{bytes_slice_resp};
-use io::{to_bytes};
+use http::url::{
+    HttpError,
+    Headers,
+    Url,
+    http_err_bad_response,
+    http_err_io,
+    http_err_not_supported,
+    http_fail_stream,
+    http_fail_unit,
+    parse_url,
+};
+use http::response::{Response, bytes_slice_resp};
+use io::{Stream, close as io_close, read, to_bytes, IoError, await_readable};
+use io::net::tcp::connect as tcp_connect;
+use io::sync::{write_all};
 
 class H2Frame {
     typ: int,
@@ -313,15 +327,261 @@ fn data_frame(int stream_id, Vec<byte> payload, int end_stream) -> H2Frame {
     return H2Frame::new(frame_type_data(), flags, stream_id, payload);
 }
 
-/// HTTP/2 client/server sessions are not on the wire yet (HPACK + mux).
+fn h2_append(Vec<byte> out, Vec<byte> extra) {
+    let i = 0;
+    while i < len(extra) {
+        out.push(extra[i]);
+        i = i + 1;
+    }
+}
+
+fn h2_cat(Vec<byte> a, Vec<byte> b) -> Vec<byte> {
+    let out: Vec<byte> = Vec::new();
+    h2_append(out, a);
+    h2_append(out, b);
+    return out;
+}
+
+/// `:authority` is `host` on default ports, otherwise `host:port`.
+fn h2_authority(Url u) -> string {
+    let host = u.host;
+    let port = u.port;
+    if u.scheme == "http" {
+        if port == 80 {
+            return host;
+        }
+    }
+    if u.scheme == "https" {
+        if port == 443 {
+            return host;
+        }
+    }
+    return host + ":" + int_to_dec(port);
+}
+
+fn h2_get_request_headers(Url u) -> Headers {
+    let h = Headers::new();
+    h.add(":method", "GET");
+    h.add(":path", u.path);
+    h.add(":scheme", u.scheme);
+    h.add(":authority", h2_authority(u));
+    return h;
+}
+
+/// Connection preface + empty SETTINGS + GET HEADERS (END_HEADERS|END_STREAM) on stream 1.
+fn h2_prior_knowledge_get(Url u) -> Vec<byte> {
+    let out = connection_preface();
+    h2_append(out, encode_frame(empty_settings_frame()));
+    h2_append(out, encode_frame(headers_frame(1, h2_get_request_headers(u), 1)));
+    return out;
+}
+
+fn h2_parse_status_digits(string s) -> int {
+    let b = to_bytes(s);
+    let v = 0;
+    let i = 0;
+    while i < len(b) {
+        v = v * 10 + ((b[i] as int) - (("0" as byte) as int));
+        i = i + 1;
+    }
+    return v;
+}
+
+fn h2_status_from_headers(Headers h) -> int {
+    let i = 0;
+    let n = h.count();
+    while i < n {
+        if h.name_at(i) == ":status" {
+            return h2_parse_status_digits(h.value_at(i));
+        }
+        i = i + 1;
+    }
+    return 200;
+}
+
+fn h2_close(Stream s) {
+    match io_close(s) {
+        Result::Ok(_) => 0,
+        Result::Err(_) => 0,
+    };
+}
+
+/// Blocking read of `n` bytes. Waits on `WouldBlock`; EOF is BadResponse.
+fn h2_read_n(Stream s, int n) -> Result<Vec<byte>, HttpError> {
+    if n == 0 {
+        let empty: Vec<byte> = Vec::new();
+        return empty;
+    }
+    let buf: Vec<byte> = Vec::new();
+    let z: byte = 0;
+    let k = 0;
+    while k < n {
+        buf.push(z);
+        k = k + 1;
+    }
+    let filled = 0;
+    while filled < n {
+        let remaining = n - filled;
+        let scratch: Vec<byte> = Vec::new();
+        let i = 0;
+        while i < remaining {
+            scratch.push(z);
+            i = i + 1;
+        }
+        match read(s, scratch) {
+            Result::Ok(opt) => {
+                match opt {
+                    Option::None => {
+                        http_err_bad_response()?;
+                    },
+                    Option::Some(got) => {
+                        if got == 0 {
+                            match await_readable(s) {
+                                Result::Ok(_) => 0,
+                                Result::Err(_) => {
+                                    http_err_io()?;
+                                    0
+                                },
+                            };
+                        }
+                        if got != 0 {
+                            let j = 0;
+                            while j < got {
+                                buf[filled + j] = scratch[j];
+                                j = j + 1;
+                            }
+                            filled = filled + got;
+                        }
+                    },
+                };
+                0
+            },
+            Result::Err(IoError::WouldBlock) => {
+                match await_readable(s) {
+                    Result::Ok(_) => 0,
+                    Result::Err(_) => {
+                        http_err_io()?;
+                        0
+                    },
+                };
+                0
+            },
+            Result::Err(_) => {
+                http_err_io()?;
+                0
+            },
+        };
+    }
+    return buf;
+}
+
+fn h2_write_frame(Stream s, H2Frame f) -> Result<(), HttpError> {
+    match write_all(s, encode_frame(f)) {
+        Result::Ok(_) => 0,
+        Result::Err(_) => {
+            http_fail_unit()?;
+            0
+        },
+    };
+    return ();
+}
+
+/// One complete frame: 9-byte header, then payload; `frame_wire_len` must match.
+fn h2_read_frame(Stream s) -> Result<H2Frame, HttpError> {
+    let hdr = h2_read_n(s, 9)?;
+    let n = u8_at(hdr, 0) * 65536 + u8_at(hdr, 1) * 256 + u8_at(hdr, 2);
+    let payload = h2_read_n(s, n)?;
+    let raw = h2_cat(hdr, payload);
+    if frame_wire_len(raw) != 9 + n {
+        http_err_bad_response()?;
+    }
+    return decode_frame(raw)?;
+}
+
+/// HTTP/2 over TLS ALPN is not implemented; `h2_serve` stays a stub.
 fn h2_not_supported() -> Result<(), HttpError> {
     http_err_not_supported()?;
     return ();
 }
 
-fn h2_connect(string url) -> Result<(), HttpError> {
-    h2_not_supported()?;
-    return ();
+/// Cleartext prior-knowledge GET (RFC 7540 §3.4). `https` is NotSupported.
+fn h2_connect(string url) -> Result<Response, HttpError> {
+    let u = parse_url(url)?;
+    if u.scheme == "https" {
+        http_err_not_supported()?;
+    }
+    let s = match tcp_connect(u.host, u.port) {
+        Result::Ok(v) => v,
+        Result::Err(_) => http_fail_stream()?,
+    };
+    match write_all(s, h2_prior_knowledge_get(u)) {
+        Result::Ok(_) => 0,
+        Result::Err(_) => {
+            h2_close(s);
+            http_fail_unit()?;
+            0
+        },
+    };
+    let status = 200;
+    let got_headers = 0;
+    let body: Vec<byte> = Vec::new();
+    let done = 0;
+    let guard = 0;
+    while done == 0 {
+        if guard >= 64 {
+            h2_close(s);
+            http_err_bad_response()?;
+        }
+        let f = match h2_read_frame(s) {
+            Result::Ok(v) => v,
+            Result::Err(e) => {
+                h2_close(s);
+                raise e;
+            },
+        };
+        if f.typ == frame_type_settings() {
+            if f.flags % 2 == 0 {
+                match h2_write_frame(s, settings_ack_frame()) {
+                    Result::Ok(_) => 0,
+                    Result::Err(e) => {
+                        h2_close(s);
+                        raise e;
+                    },
+                };
+            }
+        }
+        if f.stream_id == 1 {
+            if f.typ == frame_type_headers() {
+                let h = match headers_from_frame(f) {
+                    Result::Ok(v) => v,
+                    Result::Err(e) => {
+                        h2_close(s);
+                        raise e;
+                    },
+                };
+                status = h2_status_from_headers(h);
+                got_headers = 1;
+                if f.flags % 2 == 1 {
+                    done = 1;
+                }
+            }
+            if f.typ == frame_type_data() {
+                h2_append(body, f.payload);
+                if f.flags % 2 == 1 {
+                    done = 1;
+                }
+            }
+        }
+        guard = guard + 1;
+    }
+    h2_close(s);
+    if got_headers == 0 {
+        http_err_bad_response()?;
+    }
+    let r = Response::ok();
+    r.status(status);
+    r.body(body);
+    return r;
 }
 
 fn h2_serve() -> Result<(), HttpError> {

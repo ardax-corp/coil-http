@@ -1,13 +1,23 @@
 // HTTP/1.1 cleartext/TLS server.
-use io::{Stream, close};
+use io::{Stream, close as io_close, to_bytes};
 use io::net::tcp::{listen, local_addr};
 use io::net::tls::server::enable as tls_server_enable;
 use io::sync::{accept_wait, write_all};
 
-use http::url::{HttpError, Headers, http_fail_stream, http_fail_unit};
+use http::url::{HttpError, Headers, http_err_bad_response, http_fail_stream, http_fail_unit};
 use http::h1::{IncomingRequest, encode_response, encode_response_keepalive, incoming_wants_close, parse_request};
 use http::response::{Response};
 use http::conn::{HttpConn, close_conn, read_http_message};
+use http::h2::{
+    data_frame,
+    empty_settings_frame,
+    encode_frame,
+    h2_read_frame,
+    h2_read_n,
+    h2_write_frame,
+    headers_frame,
+};
+use http::h2_session::{H2Session};
 
 trait HttpHandler<H> {
     fn handle(H self, IncomingRequest req) -> Response;
@@ -71,7 +81,7 @@ impl Server {
         match self.listener {
             Option::None => 0,
             Option::Some(s) => {
-                match close(s) {
+                match io_close(s) {
                     Result::Ok(_) => 0,
                     Result::Err(_) => 0,
                 };
@@ -214,9 +224,136 @@ fn serve<H: HttpHandler>(Server srv, H handler) -> Result<(), HttpError> {
             }
         }
     }
-    match close(listener) {
+    match io_close(listener) {
         Result::Ok(_) => 0,
         Result::Err(_) => 0,
     };
+    return ();
+}
+
+fn h2_close_stream(Stream s) {
+    match io_close(s) {
+        Result::Ok(_) => 0,
+        Result::Err(_) => 0,
+    };
+}
+
+fn h2_write_bytes(Stream s, Vec<byte> wire) -> Result<(), HttpError> {
+    if len(wire) == 0 {
+        return ();
+    }
+    match write_all(s, wire) {
+        Result::Ok(_) => 0,
+        Result::Err(_) => {
+            http_fail_unit()?;
+            0
+        },
+    };
+    return ();
+}
+
+/// Accept one TCP connection and answer a prior-knowledge GET on stream 1 with 200 `ok`.
+fn h2_serve_once(Server srv) -> Result<(), HttpError> {
+    let listener = match srv.listener {
+        Option::None => http_fail_stream()?,
+        Option::Some(s) => s,
+    };
+    let conn = match accept_wait(listener) {
+        Result::Ok(s) => s,
+        Result::Err(_) => http_fail_stream()?,
+    };
+    match h2_write_frame(conn, empty_settings_frame()) {
+        Result::Ok(_) => 0,
+        Result::Err(e) => {
+            h2_close_stream(conn);
+            raise e;
+        },
+    };
+    let sess = H2Session::new();
+    let pref = match h2_read_n(conn, 24) {
+        Result::Ok(v) => v,
+        Result::Err(e) => {
+            h2_close_stream(conn);
+            raise e;
+        },
+    };
+    match sess.feed(pref) {
+        Result::Ok(_) => 0,
+        Result::Err(e) => {
+            h2_close_stream(conn);
+            raise e;
+        },
+    };
+    match h2_write_bytes(conn, sess.drain()) {
+        Result::Ok(_) => 0,
+        Result::Err(e) => {
+            h2_close_stream(conn);
+            raise e;
+        },
+    };
+    let done = 0;
+    let guard = 0;
+    while done == 0 {
+        if guard >= 64 {
+            h2_close_stream(conn);
+            http_err_bad_response()?;
+        }
+        let f = match h2_read_frame(conn) {
+            Result::Ok(v) => v,
+            Result::Err(e) => {
+                h2_close_stream(conn);
+                raise e;
+            },
+        };
+        match sess.feed(encode_frame(f)) {
+            Result::Ok(_) => 0,
+            Result::Err(e) => {
+                h2_close_stream(conn);
+                raise e;
+            },
+        };
+        match h2_write_bytes(conn, sess.drain()) {
+            Result::Ok(_) => 0,
+            Result::Err(e) => {
+                h2_close_stream(conn);
+                raise e;
+            },
+        };
+        if sess.stream_count() > 0 {
+            let ended = match sess.stream_ended(1) {
+                Result::Ok(v) => v,
+                Result::Err(e) => {
+                    h2_close_stream(conn);
+                    raise e;
+                },
+            };
+            if ended == 1 {
+                done = 1;
+            }
+        }
+        guard = guard + 1;
+    }
+    let rh = Headers::new();
+    rh.add(":status", "200");
+    match h2_write_frame(conn, headers_frame(1, rh, 0)) {
+        Result::Ok(_) => 0,
+        Result::Err(e) => {
+            h2_close_stream(conn);
+            raise e;
+        },
+    };
+    match h2_write_frame(conn, data_frame(1, to_bytes("ok"), 1)) {
+        Result::Ok(_) => 0,
+        Result::Err(e) => {
+            h2_close_stream(conn);
+            raise e;
+        },
+    };
+    // Drain inbound SETTINGS ACK so close does not RST unread bytes.
+    match h2_read_frame(conn) {
+        Result::Ok(_) => 0,
+        Result::Err(_) => 0,
+    };
+    h2_close_stream(conn);
     return ();
 }

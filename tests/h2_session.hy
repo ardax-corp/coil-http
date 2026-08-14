@@ -1,6 +1,6 @@
 // In-memory HTTP/2 session (preface, SETTINGS ACK, HEADERS/DATA mux).
 use string::{to_bytes};
-use http::url::{Headers};
+use http::url::{Headers, parse_url};
 use http::h2::{
     H2Frame,
     H2Settings,
@@ -12,6 +12,7 @@ use http::h2::{
     flag_ack,
     frame_type_settings,
     goaway_frame,
+    h2_prior_knowledge_get,
     headers_frame,
     settings_ack_frame,
     settings_frame,
@@ -436,6 +437,37 @@ test("stream accessors reject unknown id") {
         Result::Err(_) => true,
     };
     assert(e, "ended")?;
+}
+
+test("prior knowledge GET feeds stream 1 headers") {
+    let u = match parse_url("http://example.com/") {
+        Result::Ok(v) => v,
+        Result::Err(_) => panic "url",
+    };
+    let sess = H2Session::new();
+    match sess.feed(h2_prior_knowledge_get(u)) {
+        Result::Ok(_) => 0,
+        Result::Err(_) => panic "feed",
+    };
+    assert(sess.stream_count() == 1, "one stream")?;
+    let headers = match sess.stream_headers(1) {
+        Result::Ok(v) => v,
+        Result::Err(_) => panic "headers",
+    };
+    assert(headers.count() == 4, "four")?;
+    assert(headers.name_at(0) == ":method", "method")?;
+    assert(headers.value_at(0) == "GET", "GET")?;
+    assert(headers.name_at(1) == ":path", "path")?;
+    assert(headers.value_at(1) == "/", "slash")?;
+    assert(headers.name_at(2) == ":scheme", "scheme")?;
+    assert(headers.value_at(2) == "http", "http")?;
+    assert(headers.name_at(3) == ":authority", "authority")?;
+    assert(headers.value_at(3) == "example.com", "host")?;
+    let ended = match sess.stream_ended(1) {
+        Result::Ok(v) => v,
+        Result::Err(_) => panic "ended",
+    };
+    assert(ended == 1, "end stream")?;
 }
 
 test("data on stream zero is an error") {
