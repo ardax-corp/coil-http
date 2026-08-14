@@ -1,6 +1,6 @@
 // Framing helpers: body-len sentinels, trailers, reject bad chunk wire (no sockets).
 use string::{to_bytes};
-use http::h1::{decode_chunked_body};
+use http::h1::{decode_chunked_body, encode_chunked_body};
 use http::response::{header_block_body_len, http_framed_end, parse_response};
 
 test("header_block_body_len content-length") {
@@ -87,7 +87,6 @@ test("parse response prefers chunked over content-length") {
 }
 
 test("encode empty body as zero chunk only") {
-    use http::h1::{encode_chunked_body};
     let empty: Vec<byte> = Vec::new();
     let wire = match encode_chunked_body(empty) {
         Result::Ok(b) => b,
