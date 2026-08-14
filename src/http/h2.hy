@@ -1,4 +1,4 @@
-// HTTP/2 framing (RFC 7540 §4). HPACK and multiplexing are still NotSupported on the wire.
+// HTTP/2 framing (RFC 7540 §4). HPACK static table is in http::hpack; mux is still NotSupported on the wire.
 use http::url::{HttpError, http_err_bad_response, http_err_not_supported};
 use http::response::{bytes_slice_resp};
 use io::{to_bytes};
