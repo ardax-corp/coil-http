@@ -5,9 +5,9 @@ use io::net::tls::server::enable as tls_server_enable;
 use io::sync::{accept_wait, write_all};
 
 use http::url::{HttpError, Headers, http_fail_stream, http_fail_unit};
-use http::h1::{IncomingRequest, encode_response, incoming_wants_close, parse_request};
+use http::h1::{IncomingRequest, encode_response, encode_response_keepalive, incoming_wants_close, parse_request};
 use http::response::{Response};
-use http::conn::{read_request_bytes};
+use http::conn::{HttpConn, close_conn, read_http_message};
 
 trait HttpHandler<H> {
     fn handle(H self, IncomingRequest req) -> Response;
@@ -69,21 +69,16 @@ impl Server {
 }
 
 fn serve_conn_once<H: HttpHandler>(Server srv, Stream s, H handler) -> Result<(), HttpError> {
-    let raw = read_request_bytes(s)?;
+    let c = HttpConn::wrap(s);
+    let raw = read_http_message(c)?;
     let req = parse_request(raw)?;
     let resp = handle(handler, req);
     let wire = encode_response(resp);
-    match write_all(s, wire) {
-        Result::Ok(_) => 0,
-        Result::Err(_) => {
-            http_fail_unit()?;
-            0
-        },
-    };
-    match close(s) {
+    match write_all(c.stream(), wire) {
         Result::Ok(_) => 0,
         Result::Err(_) => 0,
     };
+    close_conn(c);
     return ();
 }
 
@@ -107,10 +102,11 @@ fn serve_once<H: HttpHandler>(Server srv, H handler) -> Result<(), HttpError> {
 }
 
 fn serve_conn_loop<H: HttpHandler>(Stream s, H handler) -> Result<(), HttpError> {
+    let c = HttpConn::wrap(s);
     let keep_going = 1;
     while keep_going == 1 {
         let raw_ok = 0;
-        let raw = match read_request_bytes(s) {
+        let raw = match read_http_message(c) {
             Result::Ok(b) => {
                 raw_ok = 1;
                 b
@@ -133,7 +129,10 @@ fn serve_conn_loop<H: HttpHandler>(Stream s, H handler) -> Result<(), HttpError>
             if keep_going == 1 {
                 let resp = handle(handler, req);
                 let wire = encode_response(resp);
-                match write_all(s, wire) {
+                if incoming_wants_close(req) == 0 {
+                    wire = encode_response_keepalive(resp);
+                }
+                match write_all(c.stream(), wire) {
                     Result::Ok(_) => 0,
                     Result::Err(_) => {
                         keep_going = 0;
@@ -146,11 +145,28 @@ fn serve_conn_loop<H: HttpHandler>(Stream s, H handler) -> Result<(), HttpError>
             }
         }
     }
-    match close(s) {
-        Result::Ok(_) => 0,
-        Result::Err(_) => 0,
-    };
+    close_conn(c);
     return ();
+}
+
+/// Accept one TCP connection and serve HTTP/1.1 until the client closes or sends `Connection: close`.
+fn serve_one_client<H: HttpHandler>(Server srv, H handler) -> Result<(), HttpError> {
+    let listener = match srv.listener {
+        Option::None => http_fail_stream()?,
+        Option::Some(s) => s,
+    };
+    let conn = match accept_wait(listener) {
+        Result::Ok(s) => s,
+        Result::Err(_) => http_fail_stream()?,
+    };
+    let stream = conn;
+    if srv.use_tls == 1 {
+        stream = match tls_server_enable(conn, { cert_pem: srv.tls_cert, key_pem: srv.tls_key, timeout_ms: 0, client_ca_pem: "", alpn: "" }) {
+            Result::Ok(s) => s,
+            Result::Err(_) => http_fail_stream()?,
+        };
+    }
+    return serve_conn_loop(stream, handler)?;
 }
 
 fn serve<H: HttpHandler>(Server srv, H handler) -> Result<(), HttpError> {

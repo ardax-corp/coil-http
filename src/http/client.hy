@@ -1,6 +1,5 @@
 // HTTP/1.1 client with optional connection pooling.
-use io::{Stream, close};
-use io::sync::{read_to_end, write_all};
+use io::sync::{write_all};
 
 use http::url::{
     Headers,
@@ -9,7 +8,6 @@ use http::url::{
     empty_headers,
     headers_have_crlf,
     http_err_bad_url,
-    http_fail_bytes,
     http_fail_unit,
     parse_url,
 };
@@ -31,6 +29,7 @@ use http::response::{
     response_status,
 };
 use http::pool::{ConnPool};
+use http::conn::{read_http_message};
 
 class Client {
     pool: ConnPool,
@@ -47,33 +46,46 @@ impl Client {
         self.use_pool = 0;
     }
 
+    fn close() {
+        self.pool.clear();
+    }
+
     fn request_send(Vec<byte> head, Url u, Vec<byte> body) -> Result<Response, HttpError> {
         let msg = concat_bytes(head, body);
-        let s = self.pool.acquire(u)?;
-        match write_all(s, msg) {
+        let c = self.pool.acquire(u)?;
+        match write_all(c.stream(), msg) {
             Result::Ok(_) => 0,
             Result::Err(_) => {
-                self.pool.discard(s);
+                self.pool.discard(c);
                 http_fail_unit()?;
                 0
             },
         };
-        let raw = match read_to_end(s) {
+        let raw = match read_http_message(c) {
             Result::Ok(b) => b,
             Result::Err(_) => {
-                self.pool.discard(s);
-                http_fail_bytes()?
+                self.pool.discard(c);
+                http_fail_unit()?;
+                Vec::new()
+            },
+        };
+        let resp = match parse_response(raw) {
+            Result::Ok(r) => r,
+            Result::Err(e) => {
+                self.pool.discard(c);
+                raise e;
             },
         };
         if self.use_pool == 1 {
-            self.pool.release(u, s);
+            if c.can_reuse() == 1 {
+                self.pool.release(u, c);
+            } else {
+                self.pool.discard(c);
+            }
         } else {
-            match close(s) {
-                Result::Ok(_) => 0,
-                Result::Err(_) => 0,
-            };
+            self.pool.discard(c);
         }
-        return parse_response(raw)?;
+        return resp;
     }
 
     fn send(Request req) -> Result<Response, HttpError> {

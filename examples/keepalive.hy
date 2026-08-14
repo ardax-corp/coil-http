@@ -1,11 +1,11 @@
-// Loopback demo: bind ephemeral port, GET via Client.
+// Two GETs on one keep-alive connection (pool).
 use thread::{Sender, channel, join, recv, send as thread_send, spawn};
 use conv::{int_to_dec};
 use string::{to_bytes};
 use io::{stdout};
 use io::sync::{write_all};
 use http::client::Client;
-use http::server::{Server, HttpHandler, serve_once};
+use http::server::{Server, HttpHandler, serve_one_client};
 use http::h1::IncomingRequest;
 use http::response::Response;
 
@@ -35,7 +35,7 @@ fn server_thread(Sender tx) {
         Result::Err(_) => panic "send port",
     };
     let h = new OkHandler();
-    match serve_once(srv, h) {
+    match serve_one_client(srv, h) {
         Result::Ok(_) => 0,
         Result::Err(_) => 0,
     };
@@ -56,15 +56,17 @@ fn main() {
     };
     let url = "http://127.0.0.1:" + int_to_dec(port) + "/";
     let c = Client::new();
-    c.no_pool();
+    match c.get(url) {
+        Result::Ok(r) => 0,
+        Result::Err(_) => panic "get1",
+    };
     match c.get(url) {
         Result::Ok(r) => {
             write_all(stdout(), to_bytes("ok"));
         },
-        Result::Err(_) => {
-            panic "get failed";
-        },
+        Result::Err(_) => panic "get2",
     };
+    c.close();
     match join(t) {
         Result::Ok(_) => 0,
         Result::Err(_) => 0,

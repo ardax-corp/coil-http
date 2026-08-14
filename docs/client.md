@@ -9,9 +9,10 @@ let c = Client::new();
 c.get("http://example.com/")?;
 c.post("http://example.com/", body_bytes)?;
 c.no_pool();  // Connection: close, no reuse
+c.close();    // drain the pool (close idle sockets)
 ```
 
-`Client::new()` enables connection pooling with `Connection: keep-alive`. Call `no_pool()` for one-shot requests (matches legacy `Connection: close` behavior).
+`Client::new()` enables connection pooling with `Connection: keep-alive`. Responses are framed by `Content-Length` or chunked transfer encoding so the connection can be reused. Call `no_pool()` for one-shot requests (matches legacy `Connection: close` behavior).
 
 ## Request builder
 
