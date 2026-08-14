@@ -7,8 +7,13 @@ use http::h2::{
     empty_settings_frame,
     encode_frame,
     frame_type_data,
+    frame_type_goaway,
+    frame_type_headers,
     frame_type_ping,
     frame_type_settings,
+    frame_type_window_update,
+    h2_connect,
+    h2_serve,
     preface_ok,
 };
 
@@ -69,4 +74,120 @@ test("ping frame 8-byte payload") {
     };
     assert(g.typ == frame_type_ping(), "ping")?;
     assert(len(g.payload) == 8, "opaque")?;
+}
+
+test("incomplete payload after valid header is an error") {
+    // Length field claims 4 bytes; only 2 follow the 9-byte header.
+    let raw: Vec<byte> = Vec::new();
+    raw.push(0 as byte);
+    raw.push(0 as byte);
+    raw.push(4 as byte);
+    raw.push(frame_type_data() as byte);
+    raw.push(0 as byte);
+    raw.push(0 as byte);
+    raw.push(0 as byte);
+    raw.push(0 as byte);
+    raw.push(1 as byte);
+    raw.push(("a" as byte));
+    raw.push(("b" as byte));
+    let r = decode_frame(raw);
+    assert(match r {
+        Result::Ok(_) => false,
+        Result::Err(_) => true,
+    }, "short payload")?;
+}
+
+test("decode ignores trailing bytes after first frame") {
+    let f = empty_settings_frame();
+    let wire = encode_frame(f);
+    wire.push(("X" as byte));
+    wire.push(("Y" as byte));
+    let g = match decode_frame(wire) {
+        Result::Ok(v) => v,
+        Result::Err(_) => panic "decode with trailer",
+    };
+    assert(g.typ == frame_type_settings(), "settings")?;
+    assert(len(g.payload) == 0, "empty payload")?;
+}
+
+test("reserved stream id bit is cleared on decode") {
+    // Wire stream id with bit 31 set (0x80000001) must yield stream 1.
+    let raw: Vec<byte> = Vec::new();
+    raw.push(0 as byte);
+    raw.push(0 as byte);
+    raw.push(0 as byte);
+    raw.push(frame_type_settings() as byte);
+    raw.push(0 as byte);
+    raw.push(128 as byte);
+    raw.push(0 as byte);
+    raw.push(0 as byte);
+    raw.push(1 as byte);
+    let g = match decode_frame(raw) {
+        Result::Ok(v) => v,
+        Result::Err(_) => panic "decode reserved",
+    };
+    assert(g.stream_id == 1, "mask reserved bit")?;
+}
+
+test("multi-byte stream id and length roundtrip") {
+    let payload: Vec<byte> = Vec::new();
+    let i = 0;
+    let mod256 = 128 + 128;
+    while i < 300 {
+        payload.push((i % mod256) as byte);
+        i = i + 1;
+    }
+    let sid = 65537;
+    let f = H2Frame::new(frame_type_headers(), 4, sid, payload);
+    let wire = encode_frame(f);
+    assert(len(wire) == 9 + 300, "wire len")?;
+    assert(wire[0] == (0 as byte), "len hi")?;
+    assert(wire[1] == (1 as byte), "len mid 256")?;
+    assert(wire[2] == (44 as byte), "len lo 44")?;
+    let g = match decode_frame(wire) {
+        Result::Ok(v) => v,
+        Result::Err(_) => panic "decode large",
+    };
+    assert(g.typ == frame_type_headers(), "headers")?;
+    assert(g.flags == 4, "end headers")?;
+    assert(g.stream_id == sid, "sid")?;
+    assert(len(g.payload) == 300, "payload len")?;
+    assert(g.payload[0] == (0 as byte), "first")?;
+    assert(g.payload[299] == (43 as byte), "last")?;
+}
+
+test("preface accepts longer buffer and rejects truncated") {
+    let p = connection_preface();
+    p.push(("Z" as byte));
+    assert(preface_ok(p) == 1, "prefix + junk")?;
+    let short = to_bytes("PRI * HTTP/2.0\r\n\r\nSM\r\n\r");
+    assert(preface_ok(short) == 0, "truncated")?;
+}
+
+test("h2_connect and h2_serve stay NotSupported") {
+    let c = h2_connect("https://example.com/");
+    assert(match c {
+        Result::Ok(_) => false,
+        Result::Err(_) => true,
+    }, "connect")?;
+    let s = h2_serve();
+    assert(match s {
+        Result::Ok(_) => false,
+        Result::Err(_) => true,
+    }, "serve")?;
+}
+
+test("goaway and window_update encode type bytes") {
+    let empty: Vec<byte> = Vec::new();
+    let g = match decode_frame(encode_frame(H2Frame::new(frame_type_goaway(), 0, 0, empty))) {
+        Result::Ok(v) => v,
+        Result::Err(_) => panic "goaway",
+    };
+    assert(g.typ == 7, "goaway type")?;
+    let empty2: Vec<byte> = Vec::new();
+    let w = match decode_frame(encode_frame(H2Frame::new(frame_type_window_update(), 0, 0, empty2))) {
+        Result::Ok(v) => v,
+        Result::Err(_) => panic "window",
+    };
+    assert(w.typ == 8, "window_update type")?;
 }
