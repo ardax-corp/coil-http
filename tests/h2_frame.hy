@@ -3,6 +3,7 @@ use string::{to_bytes};
 use http::h2::{
     H2Frame,
     connection_preface,
+    data_frame,
     decode_frame,
     empty_settings_frame,
     encode_frame,
@@ -12,6 +13,7 @@ use http::h2::{
     frame_type_ping,
     frame_type_settings,
     frame_type_window_update,
+    frame_wire_len,
     h2_connect,
     h2_serve,
     preface_ok,
@@ -190,4 +192,41 @@ test("goaway and window_update encode type bytes") {
         Result::Err(_) => panic "window",
     };
     assert(w.typ == 8, "window_update type")?;
+}
+
+test("frame_wire_len short and complete") {
+    let empty: Vec<byte> = Vec::new();
+    assert(frame_wire_len(empty) == 0, "empty")?;
+    let short = to_bytes("12345678");
+    assert(frame_wire_len(short) == 0, "lt 9")?;
+    let wire = encode_frame(empty_settings_frame());
+    assert(frame_wire_len(wire) == 9, "settings")?;
+    let cut: Vec<byte> = Vec::new();
+    let i = 0;
+    while i < 8 {
+        cut.push(wire[i]);
+        i = i + 1;
+    }
+    assert(frame_wire_len(cut) == 0, "truncated header")?;
+    let body = to_bytes("hi");
+    let data = encode_frame(data_frame(1, body, 0));
+    assert(frame_wire_len(data) == 11, "9+2")?;
+    let half: Vec<byte> = Vec::new();
+    let j = 0;
+    while j < 10 {
+        half.push(data[j]);
+        j = j + 1;
+    }
+    assert(frame_wire_len(half) == 0, "truncated payload")?;
+}
+
+test("data_frame end stream flag") {
+    let body = to_bytes("xy");
+    let open = data_frame(3, body, 0);
+    assert(open.typ == frame_type_data(), "type")?;
+    assert(open.flags == 0, "open")?;
+    assert(open.stream_id == 3, "sid")?;
+    assert(len(open.payload) == 2, "len")?;
+    let ended = data_frame(3, body, 1);
+    assert(ended.flags == 1, "end stream")?;
 }
