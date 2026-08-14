@@ -55,21 +55,21 @@ impl Client {
         self.use_pool = self.use_pool;
     }
 
-    fn request_send(Vec<byte> head, Url u, Vec<byte> body) -> Result<Response, HttpError> {
+    static fn request_send_fn(Client c, Vec<byte> head, Url u, Vec<byte> body) -> Result<Response, HttpError> {
         let msg = concat_bytes(head, body);
-        let c = self.pool.acquire(u)?;
-        match write_all(c.stream(), msg) {
+        let conn = c.pool.acquire(u)?;
+        match write_all(conn.stream(), msg) {
             Result::Ok(_) => 0,
             Result::Err(_) => {
-                self.pool.discard(c);
+                c.pool.discard(conn);
                 http_fail_unit()?;
                 0
             },
         };
-        let raw = match read_http_message(c) {
+        let raw = match read_http_message(conn) {
             Result::Ok(b) => b,
             Result::Err(_) => {
-                self.pool.discard(c);
+                c.pool.discard(conn);
                 http_fail_unit()?;
                 Vec::new()
             },
@@ -77,23 +77,23 @@ impl Client {
         let resp = match parse_response(raw) {
             Result::Ok(r) => r,
             Result::Err(e) => {
-                self.pool.discard(c);
+                c.pool.discard(conn);
                 raise e;
             },
         };
-        if self.use_pool == 1 {
-            if c.can_reuse() == 1 {
-                self.pool.release(u, c);
+        if c.use_pool == 1 {
+            if conn.can_reuse() == 1 {
+                c.pool.release(u, conn);
             } else {
-                self.pool.discard(c);
+                c.pool.discard(conn);
             }
         } else {
-            self.pool.discard(c);
+            c.pool.discard(conn);
         }
         return resp;
     }
 
-    fn send(Request req) -> Result<Response, HttpError> {
+    static fn send_fn(Client c, Request req) -> Result<Response, HttpError> {
         let method = req.method_val();
         let url = req.url_val();
         let headers = req.headers_val();
@@ -101,7 +101,7 @@ impl Client {
         let u = parse_url(url)?;
         let bl = len(body);
         let n = len(headers.names);
-        let keep = self.use_pool;
+        let keep = c.use_pool;
         if n > 0 {
             if headers_have_crlf(headers.names, headers.values) == 1 {
                 http_err_bad_url()?;
@@ -114,13 +114,13 @@ impl Client {
                     if request_line_ok(head) == 0 {
                         http_err_bad_url()?;
                     }
-                    return self.request_send(head, u, body)?;
+                    return Client::request_send_fn(c, head, u, body)?;
                 }
                 let head = build_request_head_extras(method, u, extras, bl)?;
                 if request_line_ok(head) == 0 {
                     http_err_bad_url()?;
                 }
-                return self.request_send(head, u, body)?;
+                return Client::request_send_fn(c, head, u, body)?;
             }
         }
         if keep == 1 {
@@ -128,20 +128,28 @@ impl Client {
             if request_line_ok(head) == 0 {
                 http_err_bad_url()?;
             }
-            return self.request_send(head, u, body)?;
+            return Client::request_send_fn(c, head, u, body)?;
         }
         let head = build_request_head(method, u, headers, bl)?;
         if request_line_ok(head) == 0 {
             http_err_bad_url()?;
         }
-        return self.request_send(head, u, body)?;
+        return Client::request_send_fn(c, head, u, body)?;
+    }
+
+    fn request_send(Vec<byte> head, Url u, Vec<byte> body) -> Result<Response, HttpError> {
+        return Client::request_send_fn(self, head, u, body)?;
+    }
+
+    fn send(Request req) -> Result<Response, HttpError> {
+        return Client::send_fn(self, req)?;
     }
 
     fn get(string url) -> Result<Response, HttpError> {
         let req = Request::new();
         req.method("GET");
         req.url(url);
-        return self.send(req)?;
+        return Client::send_fn(self, req)?;
     }
 
     fn post(string url, Vec<byte> body) -> Result<Response, HttpError> {
@@ -149,7 +157,7 @@ impl Client {
         req.method("POST");
         req.url(url);
         req.body(body);
-        return self.send(req)?;
+        return Client::send_fn(self, req)?;
     }
 }
 
