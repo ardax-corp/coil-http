@@ -42,3 +42,7 @@ jobs:
       - name: Keep-alive loopback (two GETs on one connection)
         working-directory: coil-http
         run: ../coil-lang/target/debug/coil examples/keepalive.hy | grep -q ok
+
+      - name: HTTP/2 prior-knowledge loopback
+        working-directory: coil-http
+        run: ../coil-lang/target/debug/coil examples/h2_loopback.hy | grep -q ok
