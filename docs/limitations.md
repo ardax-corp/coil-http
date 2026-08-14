@@ -2,8 +2,7 @@
 
 - HTTP/1.1 only on the wire (see [h2.md](h2.md), [h3.md](h3.md))
 - No redirects or cookies
-- No chunked transfer encoding
-- Connection pool reuses TCP but reads each response with `read_to_end` (works with `Connection: close` servers; keep-alive to persistent servers needs framed reads — future work)
+- Connection pool reuses TCP and frames each message by `Content-Length` or chunked transfer encoding
 - `coil test` harness does not support `thread::spawn`; run `coil examples/loopback.hy` for full TCP loopback
 - Depends on [coil-stdlib](https://github.com/ardax-corp/coil-stdlib) (`conv`, `io::sync`) via `[module].roots`
 - IPv6 URL literals not supported

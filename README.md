@@ -7,7 +7,7 @@ HTTP/1.1 client and server for [Coil](https://github.com/ardax-corp/coil-lang). 
 ```toml
 # coil.toml
 [module]
-roots = ["./src", "../coil-http/src"]
+roots = ["./src", "../coil-http/src", "../coil-stdlib/src"]
 ```
 
 ```coil

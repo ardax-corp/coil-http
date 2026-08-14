@@ -1,10 +1,10 @@
 # Consume coil-http
 
-Add this package's `src/` directory as a module root:
+Add this package's `src/` directory as a module root. `conv` / `ascii` / `io::sync` come from [coil-stdlib](https://github.com/ardax-corp/coil-stdlib):
 
 ```toml
 [module]
-roots = ["./src", "../coil-http/src"]
+roots = ["./src", "../coil-http/src", "../coil-stdlib/src"]
 ```
 
 Via spool (when published):
