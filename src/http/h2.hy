@@ -613,6 +613,19 @@ fn h2_http11_get(Stream s, Url u) -> Result<Response, HttpError> {
     return resp;
 }
 
+/// Client ALPN offer list for HTTPS `h2_connect` (prefer h2, allow HTTP/1.1).
+fn h2_client_alpn() -> string {
+    return "h2,http/1.1";
+}
+
+/// Exact ALPN `h2` means speak HTTP/2; anything else (incl. empty) falls back to HTTP/1.1.
+fn h2_alpn_is_h2(string proto) -> int {
+    if proto == "h2" {
+        return 1;
+    }
+    return 0;
+}
+
 /// `h2_serve` stays a stub (TLS server ALPN mux is later).
 fn h2_not_supported() -> Result<(), HttpError> {
     http_err_not_supported()?;
@@ -627,7 +640,7 @@ fn h2_connect(string url) -> Result<Response, HttpError> {
         Result::Err(_) => http_fail_stream()?,
     };
     if u.scheme == "https" {
-        let s = match tls_enable(tcp, u.host, { verify: true, ca_pem: Option::None, ca_path: Option::None, timeout_ms: 0, alpn: "h2,http/1.1" }) {
+        let s = match tls_enable(tcp, u.host, { verify: true, ca_pem: Option::None, ca_path: Option::None, timeout_ms: 0, alpn: h2_client_alpn() }) {
             Result::Ok(v) => v,
             Result::Err(_) => {
                 h2_close(tcp);
@@ -642,7 +655,7 @@ fn h2_connect(string url) -> Result<Response, HttpError> {
                 ""
             },
         };
-        if proto == "h2" {
+        if h2_alpn_is_h2(proto) == 1 {
             return h2_get_over_h2(s, u)?;
         }
         return h2_http11_get(s, u)?;
