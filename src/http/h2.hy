@@ -1,4 +1,5 @@
-// HTTP/2 framing (RFC 7540 §4). HPACK static table is in http::hpack; mux is still NotSupported on the wire.
+// HTTP/2 framing (RFC 7540 §4). HPACK static table is in http::hpack.
+// In-memory mux lives in http::h2_session; h2_connect / h2_serve stay NotSupported.
 use http::hpack::{decode_header_block, encode_header_block};
 use http::url::{HttpError, Headers, http_err_bad_response, http_err_not_supported};
 use http::response::{bytes_slice_resp};
@@ -121,6 +122,18 @@ fn encode_frame(H2Frame f) -> Vec<byte> {
 
 fn u8_at(Vec<byte> raw, int i) -> int {
     return (raw[i] as int);
+}
+
+/// Complete first-frame size (9 + length), or 0 if `raw` is truncated.
+fn frame_wire_len(Vec<byte> raw) -> int {
+    if len(raw) < 9 {
+        return 0;
+    }
+    let n = u8_at(raw, 0) * 65536 + u8_at(raw, 1) * 256 + u8_at(raw, 2);
+    if len(raw) < 9 + n {
+        return 0;
+    }
+    return 9 + n;
 }
 
 /// Parse the first HTTP/2 frame in `raw`. Extra bytes after the frame are ignored.
@@ -289,6 +302,15 @@ fn headers_from_frame(H2Frame f) -> Result<Headers, HttpError> {
         http_err_bad_response()?;
     }
     return decode_header_block(f.payload)?;
+}
+
+/// DATA frame. END_STREAM when `end_stream` is nonzero.
+fn data_frame(int stream_id, Vec<byte> payload, int end_stream) -> H2Frame {
+    let flags = 0;
+    if end_stream != 0 {
+        flags = flag_end_stream();
+    }
+    return H2Frame::new(frame_type_data(), flags, stream_id, payload);
 }
 
 /// HTTP/2 client/server sessions are not on the wire yet (HPACK + mux).
