@@ -19,6 +19,11 @@ jobs:
           repository: ardax-corp/coil-lang
           path: coil-lang
 
+      - uses: actions/checkout@v4
+        with:
+          repository: ardax-corp/coil-stdlib
+          path: coil-stdlib
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
@@ -33,3 +38,7 @@ jobs:
       - name: Loopback integration (threads; not available in test harness)
         working-directory: coil-http
         run: ../coil-lang/target/debug/coil examples/loopback.hy | grep -q ok
+
+      - name: Keep-alive loopback (two GETs on one connection)
+        working-directory: coil-http
+        run: ../coil-lang/target/debug/coil examples/keepalive.hy | grep -q ok
