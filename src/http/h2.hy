@@ -83,7 +83,9 @@ fn decode_frame(Vec<byte> raw) -> Result<H2Frame, HttpError> {
     let typ = u8_at(raw, 3);
     let flags = u8_at(raw, 4);
     let sid = u8_at(raw, 5) * 16777216 + u8_at(raw, 6) * 65536 + u8_at(raw, 7) * 256 + u8_at(raw, 8);
-    sid = sid % 2147483648;
+    // Clear RFC 7540 reserved bit (bit 31). Compute 2^31 — a 2147483648 literal is unreliable in Coil.
+    let two31 = 128 * 16777216;
+    sid = sid % two31;
     let payload = bytes_slice_resp(raw, 9, 9 + n);
     return H2Frame::new(typ, flags, sid, payload);
 }
