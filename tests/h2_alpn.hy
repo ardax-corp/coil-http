@@ -12,6 +12,7 @@ use http::h2::{
     h2_connect,
     h2_get_request_headers,
     h2_prior_knowledge_get,
+    h2_server_alpn,
     headers_from_frame,
 };
 
@@ -35,6 +36,10 @@ fn bytes_slice_after(Vec<byte> b, int start) -> Vec<byte> {
 
 test("client alpn offer prefers h2 then http11") {
     assert(h2_client_alpn() == "h2,http/1.1", "offer list")?;
+}
+
+test("server alpn offer is h2 only") {
+    assert(h2_server_alpn() == "h2", "server offer")?;
 }
 
 test("alpn is h2 only for exact h2 token") {
