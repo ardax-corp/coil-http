@@ -166,12 +166,12 @@ test("preface accepts longer buffer and rejects truncated") {
     assert(preface_ok(short) == 0, "truncated")?;
 }
 
-test("h2_connect https and h2_serve stay NotSupported") {
-    let c = h2_connect("https://example.com/");
+test("h2_connect https refused port is err; h2_serve stays NotSupported") {
+    let c = h2_connect("https://127.0.0.1:1/");
     assert(match c {
         Result::Ok(_) => false,
         Result::Err(_) => true,
-    }, "connect https")?;
+    }, "connect https refused")?;
     let s = h2_serve();
     assert(match s {
         Result::Ok(_) => false,
