@@ -8,7 +8,7 @@ Userland HTTP/1.1 client and server for Coil programs.
 | [client.md](client.md) | `Client`, `Request`, pooling |
 | [server.md](server.md) | `Server`, `HttpHandler` |
 | [limitations.md](limitations.md) | v1 scope and compiler notes |
-| [h2.md](h2.md) | HTTP/2 stub / ALPN |
+| [h2.md](h2.md) | HTTP/2 framing, prior-knowledge, TLS ALPN |
 | [h3.md](h3.md) | HTTP/3 stub / QUIC strategy |
 
 ## Requirements
