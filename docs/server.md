@@ -35,6 +35,8 @@ fn main() {
 | `serve_one_client(handler)` | Accept one connection, keep-alive until close |
 | `serve(handler)` | Accept loop |
 
+`Server::drop` closes the listener if still bound. That runs at GC time; unbind deterministically by dropping after `serve` returns, or process exit.
+
 ## IncomingRequest
 
 Parsed via `http::h1::parse_request`. Accessors: `method_val()`, `path_val()`, `headers_val()`, `body_val()`.
