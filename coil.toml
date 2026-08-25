@@ -2,5 +2,11 @@
 name = "http"
 version = "0.1.0"
 
+[dependencies]
+tls = { path = "../coil-tls" }
+
 [module]
-roots = ["./src", "../coil-stdlib/src"]
+roots = ["./src", "../coil-stdlib/src", "../coil-tls/src"]
+
+[ffi]
+search_paths = ["../coil-tls/native"]

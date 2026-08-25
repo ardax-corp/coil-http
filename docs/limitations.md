@@ -5,7 +5,7 @@
 - Connection pool reuses TCP and frames each message by `Content-Length` or chunked transfer encoding
 - `fn drop()` on `HttpConn` / `ConnPool` / `Client` / `Server` closes owned sockets at GC time (and VM teardown), not RAII. Prefer `Client::close` / `close_conn` when shutdown must happen now
 - `coil test` harness does not support `thread::spawn`; run `coil examples/loopback.hy` for full TCP loopback
-- Depends on [coil-stdlib](https://github.com/ardax-corp/coil-stdlib) (`conv`, `io::sync`) via `[module].roots`
+- Depends on [coil-stdlib](https://github.com/ardax-corp/coil-stdlib) (`conv`, `io::sync`) and [coil-tls](https://github.com/ardax-corp/coil-tls) via `[module].roots` / `[ffi] search_paths`
 - IPv6 URL literals not supported
 - CR/LF injection in URL/method/headers → `BadUrl`
 - `Content-Length` longer than body → `BadResponse`
@@ -18,4 +18,4 @@
 
 ## TLS
 
-Client: verified TLS only. Server: PEM cert/key via `Server::tls`. Requires Coil `tls` feature.
+Client: verified TLS only. Server: PEM cert/key via `Server::tls`. Requires the [coil-tls](https://github.com/ardax-corp/coil-tls) package (`use tls::{client, server}`) and a built `libtls`, not a Coil `tls` Cargo feature.

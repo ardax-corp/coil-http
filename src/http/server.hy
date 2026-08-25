@@ -1,7 +1,7 @@
 // HTTP/1.1 cleartext/TLS server.
 use io::{Stream, close as io_close, to_bytes};
 use io::net::tcp::{listen, local_addr};
-use io::net::tls::server::enable as tls_server_enable;
+use tls::server::enable as tls_server_enable;
 use io::sync::{accept_wait, write_all};
 
 use http::url::{HttpError, Headers, http_err_bad_response, http_fail_stream, http_fail_unit};
@@ -93,7 +93,7 @@ impl Server {
     }
 }
 
-fn serve_conn_once<H: HttpHandler>(Server srv, Stream s, H handler) -> Result<(), HttpError> {
+fn serve_conn_once(Server srv, Stream s, HttpHandler handler) -> Result<(), HttpError> {
     let c = HttpConn::wrap(s);
     let raw = read_http_message(c)?;
     let req = parse_request(raw)?;
@@ -107,7 +107,10 @@ fn serve_conn_once<H: HttpHandler>(Server srv, Stream s, H handler) -> Result<()
     return ();
 }
 
-fn serve_once<H: HttpHandler>(Server srv, H handler) -> Result<(), HttpError> {
+/// Accept one TCP connection, optionally wrap TLS, handle one request.
+/// `HttpHandler` is existential so accept/read/write run in a non-generic frame
+/// (dict-passing `<H: HttpHandler>` does not park WouldBlock).
+fn serve_once(Server srv, HttpHandler handler) -> Result<(), HttpError> {
     let listener = match srv.listener {
         Option::None => http_fail_stream()?,
         Option::Some(s) => s,
@@ -126,7 +129,7 @@ fn serve_once<H: HttpHandler>(Server srv, H handler) -> Result<(), HttpError> {
     return serve_conn_once(srv, stream, handler)?;
 }
 
-fn serve_conn_loop<H: HttpHandler>(Stream s, H handler) -> Result<(), HttpError> {
+fn serve_conn_loop(Stream s, HttpHandler handler) -> Result<(), HttpError> {
     let c = HttpConn::wrap(s);
     let keep_going = 1;
     while keep_going == 1 {
@@ -175,7 +178,7 @@ fn serve_conn_loop<H: HttpHandler>(Stream s, H handler) -> Result<(), HttpError>
 }
 
 /// Accept one TCP connection and serve HTTP/1.1 until the client closes or sends `Connection: close`.
-fn serve_one_client<H: HttpHandler>(Server srv, H handler) -> Result<(), HttpError> {
+fn serve_one_client(Server srv, HttpHandler handler) -> Result<(), HttpError> {
     let listener = match srv.listener {
         Option::None => http_fail_stream()?,
         Option::Some(s) => s,
@@ -194,7 +197,7 @@ fn serve_one_client<H: HttpHandler>(Server srv, H handler) -> Result<(), HttpErr
     return serve_conn_loop(stream, handler)?;
 }
 
-fn serve<H: HttpHandler>(Server srv, H handler) -> Result<(), HttpError> {
+fn serve(Server srv, HttpHandler handler) -> Result<(), HttpError> {
     let listener = match srv.listener {
         Option::None => http_fail_stream()?,
         Option::Some(s) => s,

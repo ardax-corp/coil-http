@@ -14,9 +14,11 @@ jobs:
         with:
           path: coil-http
 
+      # io::__tls leftover HostInvoke. Drop when coil-lang #199 is on main.
       - uses: actions/checkout@v4
         with:
           repository: ardax-corp/coil-lang
+          ref: cursor/coi-210-delete-virtual-tls-7402
           path: coil-lang
 
       - uses: actions/checkout@v4
@@ -24,12 +26,33 @@ jobs:
           repository: ardax-corp/coil-stdlib
           path: coil-stdlib
 
+      # enable(Stream, host, opts) -> Stream via leftover. Drop when coil-tls #2 is on main.
+      - uses: actions/checkout@v4
+        with:
+          repository: ardax-corp/coil-tls
+          ref: cursor/userland-tls-stream-enable-5c06
+          path: coil-tls
+
+      - name: Install system deps
+        run: sudo apt-get update && sudo apt-get install -y libffi-dev build-essential
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
       - name: Build coil
         working-directory: coil-lang
         run: cargo build
+
+      - name: Build coil-tls native
+        working-directory: coil-tls/native
+        run: |
+          set -euo pipefail
+          make artifact
+          if [ ! -f libtls.so ] && [ ! -f libtls.dylib ] && [ ! -f tls.dll ]; then
+            echo "libtls not on [ffi] search_paths (coil-tls/native)" >&2
+            ls -la
+            exit 1
+          fi
 
       - name: Run coil-http tests
         working-directory: coil-http
