@@ -55,7 +55,7 @@ Add `../coil-http/src` to your `[module].roots` when running tests from another 
 | `src/http/server.hy` | `Server`, `HttpHandler` trait |
 | `src/http/conn.hy` | Request read helpers |
 | `src/http/pool.hy` | TCP/TLS connection pool (keep-alive) |
-| `src/http/h2.hy` | HTTP/2 stub |
+| `src/http/h2.hy` | HTTP/2 framing, HPACK, prior-knowledge + TLS ALPN |
 | `src/http/h3.hy` | HTTP/3 stub |
 
 See [docs/](docs/) for API details.
