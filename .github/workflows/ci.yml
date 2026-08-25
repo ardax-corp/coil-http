@@ -24,23 +24,12 @@ jobs:
           repository: ardax-corp/coil-stdlib
           path: coil-stdlib
 
-      # Private sibling. GITHUB_TOKEN cannot read another private repo; set
-      # org/repo secret COIL_TLS_TOKEN (PAT) until spool ships libtls.
-      - name: Checkout coil-tls
-        id: coil_tls
-        continue-on-error: true
-        uses: actions/checkout@v4
+      # Public sibling. coil-http keeps enable(stream, host, opts) -> Stream;
+      # that typechecks once coil-tls leftover HostInvoke enable lands.
+      - uses: actions/checkout@v4
         with:
           repository: ardax-corp/coil-tls
           path: coil-tls
-          token: ${{ secrets.COIL_TLS_TOKEN || github.token }}
-          persist-credentials: false
-
-      - name: Require coil-tls
-        if: steps.coil_tls.outcome == 'failure'
-        run: |
-          echo "::error::Could not clone ardax-corp/coil-tls. Add secret COIL_TLS_TOKEN with read access to that private repo (GITHUB_TOKEN is coil-http only)."
-          exit 1
 
       - name: Install system deps
         run: sudo apt-get update && sudo apt-get install -y libffi-dev build-essential
@@ -53,37 +42,13 @@ jobs:
         run: cargo build
 
       - name: Build coil-tls native
-        working-directory: coil-tls
+        working-directory: coil-tls/native
         run: |
           set -euo pipefail
-          if [ -f Makefile ]; then
-            make
-          elif [ -f native/Makefile ]; then
-            make -C native
-          elif [ -f native/Cargo.toml ]; then
-            cargo build --manifest-path native/Cargo.toml
-          else
-            echo "coil-tls native build entrypoint not found" >&2
-            ls -la
-            exit 1
-          fi
-          mkdir -p native
-          for src in \
-            native/libtls.so native/libtls.dylib native/tls.dll \
-            native/target/debug/libtls.so native/target/debug/libtls.dylib native/target/debug/tls.dll \
-            native/target/release/libtls.so native/target/release/libtls.dylib native/target/release/tls.dll \
-            target/debug/libtls.so target/debug/libtls.dylib target/debug/tls.dll \
-            target/release/libtls.so target/release/libtls.dylib target/release/tls.dll; do
-            if [ -f "$src" ]; then
-              base=$(basename "$src")
-              if [ ! -e "native/$base" ]; then
-                cp "$src" "native/$base"
-              fi
-            fi
-          done
-          if [ ! -f native/libtls.so ] && [ ! -f native/libtls.dylib ] && [ ! -f native/tls.dll ]; then
+          make artifact
+          if [ ! -f libtls.so ] && [ ! -f libtls.dylib ] && [ ! -f tls.dll ]; then
             echo "libtls not on [ffi] search_paths (coil-tls/native)" >&2
-            find . -name 'libtls*' -o -name 'tls.dll' | head
+            ls -la
             exit 1
           fi
 
