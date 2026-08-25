@@ -2,13 +2,20 @@
 
 HTTP/1.1 client and server for [Coil](https://github.com/ardax-corp/coil-lang). Extracted from coil-stdlib with a class-oriented API, connection pooling, and an extensible server handler trait.
 
+HTTPS uses the [coil-tls](https://github.com/ardax-corp/coil-tls) package (`use tls::{client, server}`), not a compiler builtin.
+
 ## Quick start
 
 ```toml
 # coil.toml
 [module]
-roots = ["./src", "../coil-http/src", "../coil-stdlib/src"]
+roots = ["./src", "../coil-http/src", "../coil-stdlib/src", "../coil-tls/src"]
+
+[ffi]
+search_paths = ["../coil-tls/native"]
 ```
+
+Build `libtls` from the coil-tls checkout (`make` or `cargo build` under `native/`) so `dload("tls")` can find it.
 
 ```coil
 use http::client::Client;
@@ -26,6 +33,7 @@ fn main() {
 
 ```bash
 # from coil-http (coil on PATH or ../coil-lang/target/debug/coil)
+# siblings: coil-lang, coil-stdlib, coil-tls; libtls on [ffi] search_paths
 coil test
 
 # or from coil-lang checkout:

@@ -13,5 +13,5 @@ Userland HTTP/1.1 client and server for Coil programs.
 
 ## Requirements
 
-- Coil with `tls` feature (default) for `https://`
+- [coil-tls](https://github.com/ardax-corp/coil-tls) on `[module].roots` and `libtls` on `[ffi] search_paths` for `https://`
 - `thread` module for loopback / concurrent server examples
