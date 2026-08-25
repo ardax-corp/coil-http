@@ -24,12 +24,23 @@ jobs:
           repository: ardax-corp/coil-stdlib
           path: coil-stdlib
 
-      # Private sibling; org token / COIL_TLS_TOKEN until spool ships libtls.
-      - uses: actions/checkout@v4
+      # Private sibling. GITHUB_TOKEN cannot read another private repo; set
+      # org/repo secret COIL_TLS_TOKEN (PAT) until spool ships libtls.
+      - name: Checkout coil-tls
+        id: coil_tls
+        continue-on-error: true
+        uses: actions/checkout@v4
         with:
           repository: ardax-corp/coil-tls
           path: coil-tls
           token: ${{ secrets.COIL_TLS_TOKEN || github.token }}
+          persist-credentials: false
+
+      - name: Require coil-tls
+        if: steps.coil_tls.outcome == 'failure'
+        run: |
+          echo "::error::Could not clone ardax-corp/coil-tls. Add secret COIL_TLS_TOKEN with read access to that private repo (GITHUB_TOKEN is coil-http only)."
+          exit 1
 
       - name: Install system deps
         run: sudo apt-get update && sudo apt-get install -y libffi-dev build-essential
