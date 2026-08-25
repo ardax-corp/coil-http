@@ -1,7 +1,7 @@
 // TCP/TLS connection pool for HTTP/1.1 keep-alive (M4).
 use io::{Stream, close};
 use io::net::tcp::connect as tcp_connect;
-use io::net::tls::client::enable as tls_enable;
+use tls::client::enable as tls_enable;
 use conv::{int_to_dec};
 use http::url::{
     HttpError,

@@ -1,7 +1,7 @@
 // HTTP/1.1 cleartext/TLS server.
 use io::{Stream, close as io_close, to_bytes};
 use io::net::tcp::{listen, local_addr};
-use io::net::tls::server::enable as tls_server_enable;
+use tls::server::enable as tls_server_enable;
 use io::sync::{accept_wait, write_all};
 
 use http::url::{HttpError, Headers, http_err_bad_response, http_fail_stream, http_fail_unit};
