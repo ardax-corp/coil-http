@@ -30,7 +30,9 @@ test("tls server enable typechecks and rejects non-TCP") {
 
 test("libtls dload resolves") {
     match dload("tls") {
-        Result::Ok(_) => {},
+        Result::Ok(h) => {
+            assert(h != 0, "libtls handle")?;
+        },
         Result::Err(e) => panic e.message,
     };
 }
