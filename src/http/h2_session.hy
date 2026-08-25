@@ -1,5 +1,6 @@
 // In-memory HTTP/2 session: preface + frames from a buffer, no TLS/sockets.
 use http::url::{HttpError, Headers, bytes_slice, http_err_bad_response};
+use http::hpack::{HpackTable};
 use http::h2::{
     H2Frame,
     connection_preface,
@@ -14,7 +15,7 @@ use http::h2::{
     frame_type_settings,
     frame_type_window_update,
     frame_wire_len,
-    headers_from_frame,
+    headers_from_frame_with,
     settings_ack_frame,
 };
 
@@ -32,6 +33,7 @@ class H2Session {
     blob: Vec<byte>,
     bstart: Vec<int>,
     blen: Vec<int>,
+    hpack: HpackTable,
 }
 
 impl H2Session {
@@ -58,7 +60,8 @@ impl H2Session {
             values,
             blob,
             bstart,
-            blen
+            blen,
+            HpackTable::new(4096)
         );
     }
 
@@ -129,7 +132,7 @@ impl H2Session {
 
     fn on_headers(H2Frame f) -> Result<(), HttpError> {
         self.require_client_sid(f.stream_id)?;
-        let h = headers_from_frame(f)?;
+        let h = headers_from_frame_with(f, self.hpack)?;
         let idx = self.find_id(f.stream_id);
         if idx != 999999 {
             http_err_bad_response()?;
