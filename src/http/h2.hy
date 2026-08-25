@@ -1,22 +1,29 @@
-// HTTP/2 framing (RFC 7540 §4) and cleartext prior-knowledge (RFC 7540 §3.4).
+// HTTP/2 framing (RFC 7540 §4), cleartext prior-knowledge (§3.4), and TLS ALPN `h2`.
 // HPACK (static table, Huffman decode, dynamic table) is in http::hpack.
 // In-memory mux lives in http::h2_session.
+// TLS server ALPN is `http::server::h2_serve` / `h2_serve_once` with `Server.tls`.
+// HTTPS `h2_connect` enables TLS with `h2,http/1.1` and falls back to HTTP/1.1 when ALPN is not `h2`.
 use conv::{int_to_dec};
 use http::hpack::{HpackTable, decode_header_block_with, encode_header_block};
 use http::url::{
     HttpError,
     Headers,
     Url,
+    empty_headers,
     http_err_bad_response,
+    http_err_bad_url,
     http_err_io,
-    http_err_not_supported,
     http_fail_stream,
     http_fail_unit,
     parse_url,
 };
-use http::response::{Response, bytes_slice_resp};
+use http::request::{build_request_head};
+use http::response::{Response, bytes_slice_resp, parse_response};
+use http::conn::{HttpConn, close_conn, read_http_message};
 use io::{Stream, close as io_close, read, to_bytes, IoError, await_readable};
 use io::net::tcp::connect as tcp_connect;
+use tls::client::enable as tls_enable;
+use tls::alpn_protocol;
 use io::sync::{write_all};
 
 class H2Frame {
@@ -577,26 +584,117 @@ fn h2_get_over_h2(Stream s, Url u) -> Result<Response, HttpError> {
     return r;
 }
 
-/// HTTP/2 over TLS ALPN is not implemented; `h2_serve` stays a stub.
-fn h2_not_supported() -> Result<(), HttpError> {
-    http_err_not_supported()?;
-    return ();
+/// HTTP/1.1 GET on an already-handshaken TLS (or TCP) stream.
+fn h2_http11_get(Stream s, Url u) -> Result<Response, HttpError> {
+    let headers = empty_headers();
+    let head = match build_request_head("GET", u, headers, 0) {
+        Result::Ok(v) => v,
+        Result::Err(e) => {
+            h2_close(s);
+            raise e;
+        },
+    };
+    match write_all(s, head) {
+        Result::Ok(_) => 0,
+        Result::Err(_) => {
+            h2_close(s);
+            http_fail_unit()?;
+            0
+        },
+    };
+    let c = HttpConn::wrap(s);
+    let raw = match read_http_message(c) {
+        Result::Ok(b) => b,
+        Result::Err(e) => {
+            close_conn(c);
+            raise e;
+        },
+    };
+    let resp = match parse_response(raw) {
+        Result::Ok(r) => r,
+        Result::Err(e) => {
+            close_conn(c);
+            raise e;
+        },
+    };
+    close_conn(c);
+    return resp;
 }
 
-/// Cleartext prior-knowledge GET (RFC 7540 §3.4). `https` is NotSupported.
-fn h2_connect(string url) -> Result<Response, HttpError> {
-    let u = parse_url(url)?;
-    if u.scheme == "https" {
-        http_err_not_supported()?;
+/// Client ALPN offer list for HTTPS `h2_connect` (prefer h2, allow HTTP/1.1).
+fn h2_client_alpn() -> string {
+    return "h2,http/1.1";
+}
+
+/// Server ALPN offer for TLS `h2_serve` / TLS `h2_serve_once` (h2 only).
+fn h2_server_alpn() -> string {
+    return "h2";
+}
+
+/// Exact ALPN `h2` means speak HTTP/2; anything else (incl. empty) falls back to HTTP/1.1.
+fn h2_alpn_is_h2(string proto) -> int {
+    if proto == "h2" {
+        return 1;
     }
-    let s = match tcp_connect(u.host, u.port) {
+    return 0;
+}
+
+fn h2_tls_enable(Stream tcp, string host, bool verify, string ca_pem) -> Result<Stream, HttpError> {
+    let s = tcp;
+    if ca_pem != "" {
+        s = match tls_enable(tcp, host, { verify: verify, ca_pem: Option::Some(ca_pem), ca_path: Option::None, timeout_ms: 5000, alpn: h2_client_alpn() }) {
+            Result::Ok(v) => v,
+            Result::Err(_) => {
+                h2_close(tcp);
+                http_fail_stream()?
+            },
+        };
+    } else {
+        s = match tls_enable(tcp, host, { verify: verify, ca_pem: Option::None, ca_path: Option::None, timeout_ms: 5000, alpn: h2_client_alpn() }) {
+            Result::Ok(v) => v,
+            Result::Err(_) => {
+                h2_close(tcp);
+                http_fail_stream()?
+            },
+        };
+    }
+    return s;
+}
+
+/// HTTPS GET after TLS enable with optional CA PEM (`""` → system roots / default verify).
+fn h2_connect_tls(string url, bool verify, string ca_pem) -> Result<Response, HttpError> {
+    let u = parse_url(url)?;
+    if u.scheme != "https" {
+        http_err_bad_url()?;
+    }
+    let tcp = match tcp_connect(u.host, u.port) {
         Result::Ok(v) => v,
         Result::Err(_) => http_fail_stream()?,
     };
-    return h2_get_over_h2(s, u)?;
+    let s = h2_tls_enable(tcp, u.host, verify, ca_pem)?;
+    let proto = match alpn_protocol(s) {
+        Result::Ok(p) => p,
+        Result::Err(_) => {
+            h2_close(s);
+            http_err_io()?;
+            ""
+        },
+    };
+    if h2_alpn_is_h2(proto) == 1 {
+        return h2_get_over_h2(s, u)?;
+    }
+    return h2_http11_get(s, u)?;
 }
 
-fn h2_serve() -> Result<(), HttpError> {
-    h2_not_supported()?;
-    return ();
+/// GET: cleartext prior-knowledge, or HTTPS TLS ALPN `h2` with HTTP/1.1 fallback.
+fn h2_connect(string url) -> Result<Response, HttpError> {
+    let u = parse_url(url)?;
+    if u.scheme == "https" {
+        return h2_connect_tls(url, true, "")?;
+    }
+    let tcp = match tcp_connect(u.host, u.port) {
+        Result::Ok(v) => v,
+        Result::Err(_) => http_fail_stream()?,
+    };
+    return h2_get_over_h2(tcp, u)?;
 }

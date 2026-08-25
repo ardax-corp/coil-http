@@ -2,9 +2,10 @@
 use io::{Stream, close as io_close, to_bytes};
 use io::net::tcp::{listen, local_addr};
 use tls::server::enable as tls_server_enable;
+use tls::alpn_protocol;
 use io::sync::{accept_wait, write_all};
 
-use http::url::{HttpError, Headers, http_err_bad_response, http_fail_stream, http_fail_unit};
+use http::url::{HttpError, Headers, http_err_bad_response, http_err_not_supported, http_fail_stream, http_fail_unit};
 use http::h1::{IncomingRequest, encode_response, encode_response_keepalive, incoming_wants_close, parse_request};
 use http::response::{Response};
 use http::conn::{HttpConn, close_conn, read_http_message};
@@ -12,8 +13,10 @@ use http::h2::{
     data_frame,
     empty_settings_frame,
     encode_frame,
+    h2_alpn_is_h2,
     h2_read_frame,
     h2_read_n,
+    h2_server_alpn,
     h2_write_frame,
     headers_frame,
 };
@@ -255,16 +258,8 @@ fn h2_write_bytes(Stream s, Vec<byte> wire) -> Result<(), HttpError> {
     return ();
 }
 
-/// Accept one TCP connection and answer a prior-knowledge GET on stream 1 with 200 `ok`.
-fn h2_serve_once(Server srv) -> Result<(), HttpError> {
-    let listener = match srv.listener {
-        Option::None => http_fail_stream()?,
-        Option::Some(s) => s,
-    };
-    let conn = match accept_wait(listener) {
-        Result::Ok(s) => s,
-        Result::Err(_) => http_fail_stream()?,
-    };
+/// Speak prior-knowledge HTTP/2 on an already-accepted (and optionally TLS) stream.
+fn h2_serve_conn(Stream conn) -> Result<(), HttpError> {
     match h2_write_frame(conn, empty_settings_frame()) {
         Result::Ok(_) => 0,
         Result::Err(e) => {
@@ -359,4 +354,47 @@ fn h2_serve_once(Server srv) -> Result<(), HttpError> {
     };
     h2_close_stream(conn);
     return ();
+}
+
+/// Accept one TCP connection; TLS+ALPN `h2` when `Server.tls` was set.
+fn h2_serve_once(Server srv) -> Result<(), HttpError> {
+    let listener = match srv.listener {
+        Option::None => http_fail_stream()?,
+        Option::Some(s) => s,
+    };
+    let conn = match accept_wait(listener) {
+        Result::Ok(s) => s,
+        Result::Err(_) => http_fail_stream()?,
+    };
+    let stream = conn;
+    if srv.use_tls == 1 {
+        stream = match tls_server_enable(conn, { cert_pem: srv.tls_cert, key_pem: srv.tls_key, timeout_ms: 5000, client_ca_pem: "", alpn: h2_server_alpn() }) {
+            Result::Ok(s) => s,
+            Result::Err(_) => {
+                h2_close_stream(conn);
+                http_fail_stream()?
+            },
+        };
+        let proto = match alpn_protocol(stream) {
+            Result::Ok(p) => p,
+            Result::Err(_) => {
+                h2_close_stream(stream);
+                http_fail_unit()?;
+                ""
+            },
+        };
+        if h2_alpn_is_h2(proto) == 0 {
+            h2_close_stream(stream);
+            http_err_bad_response()?;
+        }
+    }
+    return h2_serve_conn(stream)?;
+}
+
+/// TLS HTTP/2 server one-shot: requires `Server.tls`; ALPN `h2` then prior-knowledge GET.
+fn h2_serve(Server srv) -> Result<(), HttpError> {
+    if srv.use_tls == 0 {
+        http_err_not_supported()?;
+    }
+    return h2_serve_once(srv)?;
 }
