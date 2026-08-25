@@ -1,6 +1,6 @@
 // HTTP/2 framing (RFC 7540 §4) and cleartext prior-knowledge (RFC 7540 §3.4).
-// HPACK static table is in http::hpack. In-memory mux lives in http::h2_session.
-// HTTPS / ALPN h2 is still NotSupported.
+// HPACK (static table, Huffman decode, dynamic table) is in http::hpack.
+// In-memory mux lives in http::h2_session.
 use conv::{int_to_dec};
 use http::hpack::{decode_header_block, encode_header_block};
 use http::url::{

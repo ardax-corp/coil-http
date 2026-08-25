@@ -1,13 +1,25 @@
-// HPACK static-table header block tests (no Huffman, no dynamic table).
+// HPACK header block tests (Huffman decode, dynamic table, Appendix A).
 use http::url::{Headers};
 use http::hpack::{
+    HpackTable,
     decode_header_block,
+    decode_header_block_with,
     decode_hpack_int,
     decode_hpack_string,
     encode_header_block,
     encode_hpack_int,
     encode_hpack_string,
 };
+
+fn hpack_octets(int... xs) -> Vec<byte> {
+    let out: Vec<byte> = Vec::new();
+    let i = 0;
+    while i < len(xs) {
+        out.push(xs[i] as byte);
+        i = i + 1;
+    }
+    return out;
+}
 
 test("hpack int small roundtrip") {
     let out: Vec<byte> = Vec::new();
@@ -118,16 +130,15 @@ test("truncated string literal is an error") {
     }, "truncated str")?;
 }
 
-test("huffman string is not supported") {
-    let raw: Vec<byte> = Vec::new();
-    raw.push(0 as byte);
-    raw.push(129 as byte);
-    raw.push(0 as byte);
-    let r = decode_header_block(raw);
-    assert(match r {
-        Result::Ok(_) => false,
-        Result::Err(_) => true,
-    }, "huffman")?;
+test("huffman string decodes www.example.com") {
+    // RFC 7541 C.4.1 literal value (H=1, 12 octets).
+    let raw = hpack_octets(140, 241, 227, 194, 229, 242, 58, 107, 160, 171, 144, 244, 255);
+    let d = match decode_hpack_string(raw, 0) {
+        Result::Ok(v) => v,
+        Result::Err(_) => panic "huffman www.example.com",
+    };
+    assert(d.value == "www.example.com", "www.example.com")?;
+    assert(d.next == len(raw), "consumed")?;
 }
 
 test("empty header block decodes to zero fields") {
@@ -191,23 +202,29 @@ test("content-length name index is multi-byte prefix") {
     assert(g.value_at(0) == "12", "12")?;
 }
 
-test("unknown indexed static field is an error") {
-    // Index 9 is outside the compact Appendix A subset.
-    let raw: Vec<byte> = Vec::new();
-    raw.push(137 as byte);
+test("indexed status 204 uses static index 9") {
+    let raw = hpack_octets(137);
+    let g = match decode_header_block(raw) {
+        Result::Ok(v) => v,
+        Result::Err(_) => panic "idx 9",
+    };
+    assert(g.count() == 1, "one")?;
+    assert(g.name_at(0) == ":status", "status")?;
+    assert(g.value_at(0) == "204", "204")?;
+}
+
+test("indexed zero is an error") {
+    let raw = hpack_octets(128);
     let r = decode_header_block(raw);
     assert(match r {
         Result::Ok(_) => false,
         Result::Err(_) => true,
-    }, "unknown idx")?;
+    }, "idx 0")?;
 }
 
 test("literal with unknown name index is an error") {
-    // Name index 15 is not in the compact static subset; value is "x".
-    let raw: Vec<byte> = Vec::new();
-    raw.push(15 as byte);
-    raw.push(1 as byte);
-    raw.push(("x" as byte));
+    // Name index 70 is past the static table; empty dynamic table.
+    let raw = hpack_octets(15, 55, 1, 120);
     let r = decode_header_block(raw);
     assert(match r {
         Result::Ok(_) => false,
@@ -215,24 +232,31 @@ test("literal with unknown name index is an error") {
     }, "unknown name idx")?;
 }
 
-test("incremental indexing representation is not supported") {
-    let raw: Vec<byte> = Vec::new();
-    raw.push(64 as byte);
-    let r = decode_header_block(raw);
-    assert(match r {
-        Result::Ok(_) => false,
-        Result::Err(_) => true,
-    }, "incremental")?;
+test("incremental indexing then dynamic index 62") {
+    // RFC 7541 C.2.1 plus indexed 62 (0xBE) of that entry.
+    let raw = hpack_octets(
+        64, 10, 99, 117, 115, 116, 111, 109, 45, 107, 101, 121,
+        13, 99, 117, 115, 116, 111, 109, 45, 104, 101, 97, 100, 101, 114,
+        190
+    );
+    let g = match decode_header_block(raw) {
+        Result::Ok(v) => v,
+        Result::Err(_) => panic "dyn roundtrip",
+    };
+    assert(g.count() == 2, "two")?;
+    assert(g.name_at(0) == "custom-key", "name0")?;
+    assert(g.value_at(0) == "custom-header", "val0")?;
+    assert(g.name_at(1) == "custom-key", "name1")?;
+    assert(g.value_at(1) == "custom-header", "val1")?;
 }
 
-test("dynamic table size update is not supported") {
-    let raw: Vec<byte> = Vec::new();
-    raw.push(32 as byte);
-    let r = decode_header_block(raw);
-    assert(match r {
-        Result::Ok(_) => false,
-        Result::Err(_) => true,
-    }, "dyn size")?;
+test("dynamic table size update to zero is empty") {
+    let raw = hpack_octets(32);
+    let g = match decode_header_block(raw) {
+        Result::Ok(v) => v,
+        Result::Err(_) => panic "size 0",
+    };
+    assert(g.count() == 0, "none")?;
 }
 
 test("truncated int continuation is an error") {
@@ -266,4 +290,136 @@ test("hpack int exact prefix max uses continuation") {
         Result::Err(_) => panic "decode 31",
     };
     assert(d.value == 31, "31")?;
+}
+
+test("rfc C.4.1 huffman request block") {
+    let raw = hpack_octets(
+        130, 134, 132, 65, 140, 241, 227, 194, 229, 242, 58, 107, 160, 171, 144, 244, 255
+    );
+    let g = match decode_header_block(raw) {
+        Result::Ok(v) => v,
+        Result::Err(_) => panic "C.4.1",
+    };
+    assert(g.count() == 4, "four")?;
+    assert(g.name_at(0) == ":method", "method")?;
+    assert(g.value_at(0) == "GET", "GET")?;
+    assert(g.name_at(1) == ":scheme", "scheme")?;
+    assert(g.value_at(1) == "http", "http")?;
+    assert(g.name_at(2) == ":path", "path")?;
+    assert(g.value_at(2) == "/", "slash")?;
+    assert(g.name_at(3) == ":authority", "authority")?;
+    assert(g.value_at(3) == "www.example.com", "host")?;
+}
+
+test("rfc C.3 dynamic table persists across blocks") {
+    let t = HpackTable::new(4096);
+    let first = hpack_octets(
+        130, 134, 132, 65, 15, 119, 119, 119, 46, 101, 120, 97, 109, 112, 108, 101, 46, 99, 111, 109
+    );
+    let g1 = match decode_header_block_with(first, t) {
+        Result::Ok(v) => v,
+        Result::Err(_) => panic "C.3.1",
+    };
+    assert(g1.value_at(3) == "www.example.com", "c31 host")?;
+    let second = hpack_octets(130, 134, 132, 190, 88, 8, 110, 111, 45, 99, 97, 99, 104, 101);
+    let g2 = match decode_header_block_with(second, t) {
+        Result::Ok(v) => v,
+        Result::Err(_) => panic "C.3.2",
+    };
+    assert(g2.count() == 5, "five")?;
+    assert(g2.name_at(3) == ":authority", "auth")?;
+    assert(g2.value_at(3) == "www.example.com", "host")?;
+    assert(g2.name_at(4) == "cache-control", "cc")?;
+    assert(g2.value_at(4) == "no-cache", "no-cache")?;
+}
+
+test("rfc C.5.1 response date location cache-control") {
+    let raw = hpack_octets(
+        72, 3, 51, 48, 50, 88, 7, 112, 114, 105, 118, 97, 116, 101, 97, 29,
+        77, 111, 110, 44, 32, 50, 49, 32, 79, 99, 116, 32, 50, 48, 49, 51,
+        32, 50, 48, 58, 49, 51, 58, 50, 49, 32, 71, 77, 84, 110, 23, 104,
+        116, 116, 112, 115, 58, 47, 47, 119, 119, 119, 46, 101, 120, 97, 109,
+        112, 108, 101, 46, 99, 111, 109
+    );
+    let g = match decode_header_block(raw) {
+        Result::Ok(v) => v,
+        Result::Err(_) => panic "C.5.1",
+    };
+    assert(g.count() == 4, "four")?;
+    assert(g.name_at(0) == ":status", "status")?;
+    assert(g.value_at(0) == "302", "302")?;
+    assert(g.name_at(1) == "cache-control", "cc")?;
+    assert(g.value_at(1) == "private", "private")?;
+    assert(g.name_at(2) == "date", "date")?;
+    assert(g.value_at(2) == "Mon, 21 Oct 2013 20:13:21 GMT", "gmt")?;
+    assert(g.name_at(3) == "location", "loc")?;
+    assert(g.value_at(3) == "https://www.example.com", "url")?;
+}
+
+test("rfc C.5.2 evicts when table cap is 256") {
+    let t = HpackTable::new(256);
+    let first = hpack_octets(
+        72, 3, 51, 48, 50, 88, 7, 112, 114, 105, 118, 97, 116, 101, 97, 29,
+        77, 111, 110, 44, 32, 50, 49, 32, 79, 99, 116, 32, 50, 48, 49, 51,
+        32, 50, 48, 58, 49, 51, 58, 50, 49, 32, 71, 77, 84, 110, 23, 104,
+        116, 116, 112, 115, 58, 47, 47, 119, 119, 119, 46, 101, 120, 97, 109,
+        112, 108, 101, 46, 99, 111, 109
+    );
+    match decode_header_block_with(first, t) {
+        Result::Ok(_) => 0,
+        Result::Err(_) => panic "C.5.1 for eviction",
+    };
+    let second = hpack_octets(72, 3, 51, 48, 55, 193, 192, 191);
+    let g = match decode_header_block_with(second, t) {
+        Result::Ok(v) => v,
+        Result::Err(_) => panic "C.5.2",
+    };
+    assert(g.count() == 4, "four")?;
+    assert(g.value_at(0) == "307", "307")?;
+    assert(g.name_at(1) == "cache-control", "cc")?;
+    assert(g.value_at(1) == "private", "private")?;
+    assert(g.name_at(2) == "date", "date")?;
+    assert(g.name_at(3) == "location", "loc")?;
+}
+
+test("never indexed literal decodes") {
+    let raw = hpack_octets(16, 8, 112, 97, 115, 115, 119, 111, 114, 100, 6, 115, 101, 99, 114, 101, 116);
+    let g = match decode_header_block(raw) {
+        Result::Ok(v) => v,
+        Result::Err(_) => panic "never indexed",
+    };
+    assert(g.count() == 1, "one")?;
+    assert(g.name_at(0) == "password", "name")?;
+    assert(g.value_at(0) == "secret", "secret")?;
+}
+
+test("static table has server date location cache-control") {
+    let raw = hpack_octets(182, 161, 174, 152);
+    let g = match decode_header_block(raw) {
+        Result::Ok(v) => v,
+        Result::Err(_) => panic "static names",
+    };
+    assert(g.count() == 4, "four")?;
+    assert(g.name_at(0) == "server", "server")?;
+    assert(g.name_at(1) == "date", "date")?;
+    assert(g.name_at(2) == "location", "loc")?;
+    assert(g.name_at(3) == "cache-control", "cc")?;
+}
+
+test("huffman padding zeros are an error") {
+    let raw = hpack_octets(129, 0);
+    let r = decode_hpack_string(raw, 0);
+    assert(match r {
+        Result::Ok(_) => false,
+        Result::Err(_) => true,
+    }, "bad pad")?;
+}
+
+test("size update after a field is an error") {
+    let raw = hpack_octets(130, 32);
+    let r = decode_header_block(raw);
+    assert(match r {
+        Result::Ok(_) => false,
+        Result::Err(_) => true,
+    }, "late size update")?;
 }
