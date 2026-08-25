@@ -2,7 +2,7 @@
 // HPACK (static table, Huffman decode, dynamic table) is in http::hpack.
 // In-memory mux lives in http::h2_session.
 // TLS server ALPN is `http::server::h2_serve` / `h2_serve_once` with `Server.tls`.
-// HTTPS `h2_connect` leftover-enables TLS with `h2,http/1.1` and falls back to HTTP/1.1 when ALPN is not `h2`.
+// HTTPS `h2_connect` enables TLS with `h2,http/1.1` and falls back to HTTP/1.1 when ALPN is not `h2`.
 use conv::{int_to_dec};
 use http::hpack::{HpackTable, decode_header_block_with, encode_header_block};
 use http::url::{
@@ -22,7 +22,7 @@ use http::response::{Response, bytes_slice_resp, parse_response};
 use http::conn::{HttpConn, close_conn, read_http_message};
 use io::{Stream, close as io_close, read, to_bytes, IoError, await_readable};
 use io::net::tcp::connect as tcp_connect;
-use io::__tls::client::enable as tls_enable;
+use tls::client::enable as tls_enable;
 use tls::alpn_protocol;
 use io::sync::{write_all};
 
