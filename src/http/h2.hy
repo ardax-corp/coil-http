@@ -2,7 +2,7 @@
 // HPACK (static table, Huffman decode, dynamic table) is in http::hpack.
 // In-memory mux lives in http::h2_session.
 use conv::{int_to_dec};
-use http::hpack::{decode_header_block, encode_header_block};
+use http::hpack::{HpackTable, decode_header_block_with, encode_header_block};
 use http::url::{
     HttpError,
     Headers,
@@ -311,11 +311,16 @@ fn headers_frame(int stream_id, Headers h, int end_stream) -> H2Frame {
     return H2Frame::new(frame_type_headers(), flags, stream_id, payload);
 }
 
-fn headers_from_frame(H2Frame f) -> Result<Headers, HttpError> {
+/// Decode HEADERS through `t` so later frames can use dynamic indices.
+fn headers_from_frame_with(H2Frame f, HpackTable t) -> Result<Headers, HttpError> {
     if f.typ != frame_type_headers() {
         http_err_bad_response()?;
     }
-    return decode_header_block(f.payload)?;
+    return decode_header_block_with(f.payload, t)?;
+}
+
+fn headers_from_frame(H2Frame f) -> Result<Headers, HttpError> {
+    return headers_from_frame_with(f, HpackTable::new(4096))?;
 }
 
 /// DATA frame. END_STREAM when `end_stream` is nonzero.
@@ -498,22 +503,9 @@ fn h2_read_frame(Stream s) -> Result<H2Frame, HttpError> {
     return decode_frame(raw)?;
 }
 
-/// HTTP/2 over TLS ALPN is not implemented; `h2_serve` stays a stub.
-fn h2_not_supported() -> Result<(), HttpError> {
-    http_err_not_supported()?;
-    return ();
-}
-
-/// Cleartext prior-knowledge GET (RFC 7540 §3.4). `https` is NotSupported.
-fn h2_connect(string url) -> Result<Response, HttpError> {
-    let u = parse_url(url)?;
-    if u.scheme == "https" {
-        http_err_not_supported()?;
-    }
-    let s = match tcp_connect(u.host, u.port) {
-        Result::Ok(v) => v,
-        Result::Err(_) => http_fail_stream()?,
-    };
+/// HTTP/2 GET on a connected stream (cleartext prior-knowledge or TLS ALPN `h2`).
+/// One decoder table for every HEADERS frame on this connection.
+fn h2_get_over_h2(Stream s, Url u) -> Result<Response, HttpError> {
     match write_all(s, h2_prior_knowledge_get(u)) {
         Result::Ok(_) => 0,
         Result::Err(_) => {
@@ -522,6 +514,7 @@ fn h2_connect(string url) -> Result<Response, HttpError> {
             0
         },
     };
+    let table = HpackTable::new(4096);
     let status = 200;
     let got_headers = 0;
     let body: Vec<byte> = Vec::new();
@@ -552,7 +545,7 @@ fn h2_connect(string url) -> Result<Response, HttpError> {
         }
         if f.stream_id == 1 {
             if f.typ == frame_type_headers() {
-                let h = match headers_from_frame(f) {
+                let h = match headers_from_frame_with(f, table) {
                     Result::Ok(v) => v,
                     Result::Err(e) => {
                         h2_close(s);
@@ -582,6 +575,25 @@ fn h2_connect(string url) -> Result<Response, HttpError> {
     r.status(status);
     r.body(body);
     return r;
+}
+
+/// HTTP/2 over TLS ALPN is not implemented; `h2_serve` stays a stub.
+fn h2_not_supported() -> Result<(), HttpError> {
+    http_err_not_supported()?;
+    return ();
+}
+
+/// Cleartext prior-knowledge GET (RFC 7540 §3.4). `https` is NotSupported.
+fn h2_connect(string url) -> Result<Response, HttpError> {
+    let u = parse_url(url)?;
+    if u.scheme == "https" {
+        http_err_not_supported()?;
+    }
+    let s = match tcp_connect(u.host, u.port) {
+        Result::Ok(v) => v,
+        Result::Err(_) => http_fail_stream()?,
+    };
+    return h2_get_over_h2(s, u)?;
 }
 
 fn h2_serve() -> Result<(), HttpError> {
