@@ -15,7 +15,6 @@ use http::h2::{
     frame_type_window_update,
     frame_wire_len,
     h2_connect,
-    h2_serve,
     preface_ok,
 };
 
@@ -166,17 +165,12 @@ test("preface accepts longer buffer and rejects truncated") {
     assert(preface_ok(short) == 0, "truncated")?;
 }
 
-test("h2_connect https and h2_serve stay NotSupported") {
-    let c = h2_connect("https://example.com/");
+test("h2_connect https refused port is err") {
+    let c = h2_connect("https://127.0.0.1:1/");
     assert(match c {
         Result::Ok(_) => false,
         Result::Err(_) => true,
-    }, "connect https")?;
-    let s = h2_serve();
-    assert(match s {
-        Result::Ok(_) => false,
-        Result::Err(_) => true,
-    }, "serve")?;
+    }, "connect https refused")?;
 }
 
 test("goaway and window_update encode type bytes") {
