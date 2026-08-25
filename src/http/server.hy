@@ -2,6 +2,7 @@
 use io::{Stream, close as io_close, to_bytes};
 use io::net::tcp::{listen, local_addr};
 use tls::server::enable as tls_server_enable;
+use io::__tls::server::enable as tls_h2_server_enable;
 use tls::alpn_protocol;
 use io::sync::{accept_wait, write_all};
 
@@ -368,7 +369,7 @@ fn h2_serve_once(Server srv) -> Result<(), HttpError> {
     };
     let stream = conn;
     if srv.use_tls == 1 {
-        stream = match tls_server_enable(conn, { cert_pem: srv.tls_cert, key_pem: srv.tls_key, timeout_ms: 5000, client_ca_pem: "", alpn: h2_server_alpn() }) {
+        stream = match tls_h2_server_enable(conn, { cert_pem: srv.tls_cert, key_pem: srv.tls_key, timeout_ms: 5000, client_ca_pem: "", alpn: h2_server_alpn() }) {
             Result::Ok(s) => s,
             Result::Err(_) => {
                 h2_close_stream(conn);

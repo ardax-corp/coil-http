@@ -1,13 +1,13 @@
-// TLS HTTP/2 ALPN loopback: leftover enable across Coil threads (COI-116 / coil-lang #200).
-// Server enable in spawn, client enable on the root, ALPN `h2`, then a real GET.
+// TLS HTTP/2 ALPN loopback (COI-116 / coil-lang #200).
+// Server leftover enable in spawn, client enable on the root, ALPN `h2`, then GET.
 use thread::{Sender, channel, join, recv, send as thread_send, spawn};
 use conv::{int_to_dec};
 use string::{to_bytes};
-use io::{stdout};
-use io::net::tcp::{listen, connect, local_addr};
-use io::sync::{accept_wait, write_all};
-use tls::client::enable as tls_client_enable;
-use tls::server::enable as tls_server_enable;
+use io::{stdout, await_readable};
+use io::net::tcp::{listen, connect, accept, local_addr};
+use io::sync::{write_all};
+use io::__tls::client::enable as tls_client_enable;
+use io::__tls::server::enable as tls_server_enable;
 use tls::alpn_protocol;
 use http::h2::{h2_get_over_h2};
 use http::server::{h2_serve_conn};
@@ -35,7 +35,11 @@ fn server_thread(Sender tx) {
         Result::Ok(_) => 0,
         Result::Err(_) => panic "send port",
     };
-    let conn = match accept_wait(listener) {
+    match await_readable(listener) {
+        Result::Ok(_) => 0,
+        Result::Err(_) => panic "await",
+    };
+    let conn = match accept(listener) {
         Result::Ok(s) => s,
         Result::Err(_) => panic "accept",
     };
