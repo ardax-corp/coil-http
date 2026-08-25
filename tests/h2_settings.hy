@@ -363,7 +363,7 @@ test("headers frame wire roundtrip keeps HPACK block") {
 }
 
 test("headers_from_frame propagates bad HPACK payload") {
-    // Literal without indexing + Huffman-coded name length (H=1) → Err.
+    // Literal without indexing + truncated Huffman name (H=1, length 1, no octets) → Err.
     let lit: Vec<byte> = Vec::new();
     lit.push(0 as byte);
     lit.push(129 as byte);
