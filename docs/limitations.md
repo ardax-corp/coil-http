@@ -18,4 +18,4 @@
 
 ## TLS
 
-Client: verified TLS only. Server: PEM cert/key via `Server::tls`. Requires the [coil-tls](https://github.com/ardax-corp/coil-tls) package (`use tls::{client, server}`) and a built `libtls`, not a Coil `tls` Cargo feature.
+Client: verified TLS only (`new ClientOpts(true, ...)`). Server: PEM cert/key via `Server::tls` (`new ServerOpts(...)`). Requires the [coil-tls](https://github.com/ardax-corp/coil-tls) package (`use tls::{client, server}::enable`) and a built `libtls`, not a Coil `tls` Cargo feature.
