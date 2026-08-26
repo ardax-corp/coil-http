@@ -1,5 +1,6 @@
 // TLS HTTP/2 ALPN loopback. Package enable with ClientOpts/ServerOpts (ALPN h2).
 // Server enable in spawn, client enable on the root, then a real GET.
+// Spawned workers dload ./native/libtls.so (empty FFI search_paths).
 use thread::{Sender, channel, join, recv, send as thread_send, spawn};
 use conv::{int_to_dec};
 use string::{to_bytes};
