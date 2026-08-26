@@ -8,6 +8,7 @@ use http::hpack::{
     decode_hpack_int,
     decode_hpack_string,
     encode_header_block,
+    encode_header_block_with,
     encode_hpack_huffman,
     encode_hpack_int,
     encode_hpack_string,
@@ -81,11 +82,11 @@ test("encode GET path slash uses static indices") {
     assert(g.value_at(1) == "/", "slash")?;
 }
 
-test("literal without indexing new name") {
+test("literal with incremental indexing new name") {
     let h = Headers::new();
     h.add("x-trace", "abc");
     let block = encode_header_block(h);
-    assert((block[0] as int) == 0, "index 0")?;
+    assert((block[0] as int) == 64, "index 0 incremental")?;
     let g = match decode_header_block(block) {
         Result::Ok(v) => v,
         Result::Err(_) => panic "decode literal",
@@ -263,7 +264,7 @@ test("literal with static name index custom value") {
     h.add(":method", "PUT");
     h.add(":authority", "example.com");
     let block = encode_header_block(h);
-    assert((block[0] as int) == 2, "method name idx 2")?;
+    assert((block[0] as int) == 66, "method name idx 2 incremental")?;
     let g = match decode_header_block(block) {
         Result::Ok(v) => v,
         Result::Err(_) => panic "decode name idx",
@@ -275,13 +276,12 @@ test("literal with static name index custom value") {
     assert(g.value_at(1) == "example.com", "host")?;
 }
 
-test("content-length name index is multi-byte prefix") {
+test("content-length name index fits 6-bit incremental prefix") {
     let h = Headers::new();
     h.add("content-length", "12");
     let block = encode_header_block(h);
-    // Index 28 with 4-bit prefix: 0x0F then 13 (28 - 15).
-    assert((block[0] as int) == 15, "prefix ones")?;
-    assert((block[1] as int) == 13, "cont 13")?;
+    // Index 28 with 6-bit prefix: 01 011100 = 92.
+    assert((block[0] as int) == 92, "name idx 28 incremental")?;
     let g = match decode_header_block(block) {
         Result::Ok(v) => v,
         Result::Err(_) => panic "decode cl",
@@ -510,4 +510,96 @@ test("size update after a field is an error") {
         Result::Ok(_) => false,
         Result::Err(_) => true,
     }, "late size update")?;
+}
+
+test("encode incremental then dynamic index 62") {
+    let t = HpackTable::new(4096);
+    let h1 = Headers::new();
+    h1.add("x-trace", "abc");
+    let first = encode_header_block_with(h1, t);
+    assert((first[0] as int) == 64, "incremental")?;
+    assert(t.size > 0, "inserted")?;
+    let h2 = Headers::new();
+    h2.add("x-trace", "abc");
+    let second = encode_header_block_with(h2, t);
+    assert(len(second) == 1, "one octet")?;
+    assert((second[0] as int) == 190, "index 62")?;
+    let g = match decode_header_block_with(second, t) {
+        Result::Ok(v) => v,
+        Result::Err(_) => panic "decode idx 62",
+    };
+    assert(g.count() == 1, "one")?;
+    assert(g.name_at(0) == "x-trace", "name")?;
+    assert(g.value_at(0) == "abc", "value")?;
+}
+
+test("rfc C.4 encode reuses authority as index 62") {
+    let t = HpackTable::new(4096);
+    let h1 = Headers::new();
+    h1.add(":method", "GET");
+    h1.add(":scheme", "http");
+    h1.add(":path", "/");
+    h1.add(":authority", "www.example.com");
+    let first = encode_header_block_with(h1, t);
+    let want1 = hpack_octets(
+        130, 134, 132, 65, 140, 241, 227, 194, 229, 242, 58, 107, 160, 171, 144, 244, 255
+    );
+    assert(len(first) == len(want1), "C.4.1 len")?;
+    let i = 0;
+    while i < len(want1) {
+        assert((first[i] as int) == (want1[i] as int), "C.4.1 byte")?;
+        i = i + 1;
+    }
+    let h2 = Headers::new();
+    h2.add(":method", "GET");
+    h2.add(":scheme", "http");
+    h2.add(":path", "/");
+    h2.add(":authority", "www.example.com");
+    h2.add("cache-control", "no-cache");
+    let second = encode_header_block_with(h2, t);
+    let want2 = hpack_octets(130, 134, 132, 190, 88, 134, 168, 235, 16, 100, 156, 255);
+    assert(len(second) == len(want2), "C.4.2 len")?;
+    i = 0;
+    while i < len(want2) {
+        assert((second[i] as int) == (want2[i] as int), "C.4.2 byte")?;
+        i = i + 1;
+    }
+    let fresh = decode_header_block_with(second, HpackTable::new(4096));
+    assert(match fresh {
+        Result::Ok(_) => false,
+        Result::Err(_) => true,
+    }, "fresh table misses 62")?;
+    let peer = HpackTable::new(4096);
+    match decode_header_block_with(first, peer) {
+        Result::Ok(_) => 0,
+        Result::Err(_) => panic "peer C.4.1",
+    };
+    let g2 = match decode_header_block_with(second, peer) {
+        Result::Ok(v) => v,
+        Result::Err(_) => panic "peer C.4.2",
+    };
+    assert(g2.count() == 5, "five")?;
+    assert(g2.value_at(3) == "www.example.com", "host")?;
+    assert(g2.value_at(4) == "no-cache", "no-cache")?;
+}
+
+test("encode eviction after table size 0 drops dynamic index") {
+    let t = HpackTable::new(4096);
+    let h1 = Headers::new();
+    h1.add("x-trace", "abc");
+    encode_header_block_with(h1, t);
+    assert(t.size > 0, "had entry")?;
+    hpack_table_resize(t, 0);
+    assert(t.size == 0, "evicted")?;
+    let h2 = Headers::new();
+    h2.add("x-trace", "abc");
+    let second = encode_header_block_with(h2, t);
+    assert((second[0] as int) == 64, "incremental again")?;
+    assert((second[0] as int) != 190, "not idx 62")?;
+    let stale = hpack_octets(190);
+    let r = decode_header_block_with(stale, t);
+    assert(match r {
+        Result::Ok(_) => false,
+        Result::Err(_) => true,
+    }, "idx 62 gone")?;
 }
