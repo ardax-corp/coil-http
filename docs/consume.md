@@ -6,7 +6,7 @@ This package depends on `tls` via spool (`coil.lock`), not a `../coil-tls` path:
 
 ```toml
 [dependencies]
-tls = { git = "https://github.com/ardax-corp/coil-tls.git", version = "^0.1" }
+tls = { git = "https://github.com/ardax-corp/coil-tls.git" }
 
 [module]
 roots = ["./src", "../coil-stdlib/src", "./.spool/deps/tls/src"]
@@ -22,7 +22,7 @@ Via spool (when this package is published):
 ```toml
 [dependencies]
 http = { git = "https://github.com/ardax-corp/coil-http.git", version = "^0.1" }
-tls = { git = "https://github.com/ardax-corp/coil-tls.git", version = "^0.1" }
+tls = { git = "https://github.com/ardax-corp/coil-tls.git" }
 
 [module]
 roots = ["./src", "./.spool/deps/http", "./.spool/deps/tls/src"]
