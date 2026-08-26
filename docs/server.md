@@ -34,7 +34,7 @@ fn main() {
 | `serve_once(handler)` | Accept one connection, one request |
 | `serve_one_client(handler)` | Accept one connection, keep-alive until close |
 | `serve(handler)` | Accept loop |
-| `h2_serve_once` | One connection, HTTP/2 prior-knowledge GET (`ok`); TLS+ALPN `h2` when `Server.tls` is set |
+| `h2_serve_once` | One connection, HTTP/2 prior-knowledge (every ended stream gets `ok`); TLS+ALPN `h2` when `Server.tls` is set |
 | `h2_serve` | Same as `h2_serve_once`, requires `Server.tls` |
 
 `Server::drop` closes the listener if still bound. That runs at GC time; unbind deterministically by dropping after `serve` returns, or process exit.

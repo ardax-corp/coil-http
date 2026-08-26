@@ -1,5 +1,6 @@
 // HPACK header block tests (Huffman decode, dynamic table, Appendix A).
 use http::url::{Headers};
+use io::{to_bytes};
 use http::hpack::{
     HpackTable,
     decode_header_block,
@@ -7,8 +8,10 @@ use http::hpack::{
     decode_hpack_int,
     decode_hpack_string,
     encode_header_block,
+    encode_hpack_huffman,
     encode_hpack_int,
     encode_hpack_string,
+    hpack_table_resize,
 };
 
 fn hpack_octets(int... xs) -> Vec<byte> {
@@ -139,6 +142,91 @@ test("huffman string decodes www.example.com") {
     };
     assert(d.value == "www.example.com", "www.example.com")?;
     assert(d.next == len(raw), "consumed")?;
+}
+
+test("huffman encode www.example.com matches C.4.1") {
+    let raw = encode_hpack_huffman(to_bytes("www.example.com"));
+    let want = hpack_octets(241, 227, 194, 229, 242, 58, 107, 160, 171, 144, 244, 255);
+    assert(len(raw) == 12, "12 octets")?;
+    let i = 0;
+    while i < 12 {
+        assert((raw[i] as int) == (want[i] as int), "c41 byte")?;
+        i = i + 1;
+    }
+}
+
+test("hpack string uses H=1 when huffman is shorter") {
+    let out: Vec<byte> = Vec::new();
+    encode_hpack_string(out, "www.example.com");
+    assert((out[0] as int) / 128 == 1, "H=1")?;
+    assert((out[0] as int) % 128 == 12, "len 12")?;
+    let d = match decode_hpack_string(out, 0) {
+        Result::Ok(v) => v,
+        Result::Err(_) => panic "roundtrip huffman",
+    };
+    assert(d.value == "www.example.com", "value")?;
+    assert(d.next == len(out), "consumed")?;
+}
+
+test("hpack string encode decode roundtrip hello") {
+    let out: Vec<byte> = Vec::new();
+    encode_hpack_string(out, "hello");
+    let d = match decode_hpack_string(out, 0) {
+        Result::Ok(v) => v,
+        Result::Err(_) => panic "hello",
+    };
+    assert(d.value == "hello", "hello")?;
+    assert(d.next == len(out), "consumed")?;
+}
+
+test("hpack string encode decode roundtrip empty") {
+    let out: Vec<byte> = Vec::new();
+    encode_hpack_string(out, "");
+    assert((out[0] as int) / 128 == 0, "H=0 equal length")?;
+    let d = match decode_hpack_string(out, 0) {
+        Result::Ok(v) => v,
+        Result::Err(_) => panic "empty",
+    };
+    assert(d.value == "", "empty")?;
+    assert(d.next == len(out), "consumed")?;
+}
+
+test("hpack string encode decode roundtrip slash") {
+    let out: Vec<byte> = Vec::new();
+    encode_hpack_string(out, "/");
+    let d = match decode_hpack_string(out, 0) {
+        Result::Ok(v) => v,
+        Result::Err(_) => panic "slash",
+    };
+    assert(d.value == "/", "slash")?;
+}
+
+test("header block encode decode roundtrip with huffman values") {
+    let h = Headers::new();
+    h.add("x-trace", "www.example.com");
+    h.add("content-type", "text/plain");
+    let block = encode_header_block(h);
+    let g = match decode_header_block(block) {
+        Result::Ok(v) => v,
+        Result::Err(_) => panic "block roundtrip",
+    };
+    assert(g.count() == 2, "two")?;
+    assert(g.name_at(0) == "x-trace", "name0")?;
+    assert(g.value_at(0) == "www.example.com", "val0")?;
+    assert(g.name_at(1) == "content-type", "name1")?;
+    assert(g.value_at(1) == "text/plain", "val1")?;
+}
+
+test("hpack table resize from SETTINGS shrinks cap and max") {
+    let t = HpackTable::new(4096);
+    assert(t.cap == 4096, "default cap")?;
+    assert(t.max_size == 4096, "default max")?;
+    hpack_table_resize(t, 256);
+    assert(t.cap == 256, "cap 256")?;
+    assert(t.max_size == 256, "max 256")?;
+    hpack_table_resize(t, 0);
+    assert(t.cap == 0, "cap 0")?;
+    assert(t.size == 0, "empty")?;
 }
 
 test("empty header block decodes to zero fields") {

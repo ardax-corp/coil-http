@@ -17,7 +17,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: ardax-corp/coil-lang
-          ref: cursor/delete-leftover-tls-crypto-f61b
           path: coil-lang
 
       - uses: actions/checkout@v4
@@ -28,7 +27,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: ardax-corp/coil-tls
-          ref: cursor/stream-attach-enable-e26d
           path: coil-tls
 
       - name: Install system deps
@@ -88,6 +86,10 @@ jobs:
       - name: HTTP/2 prior-knowledge loopback
         working-directory: coil-http
         run: ../coil-lang/target/debug/coil examples/h2_loopback.hy | grep -q ok
+
+      - name: HTTP/2 multi-stream loopback
+        working-directory: coil-http
+        run: ../coil-lang/target/debug/coil examples/h2_mux_loopback.hy | grep -q ok
 
       - name: HTTP/2 TLS ALPN loopback
         working-directory: coil-http

@@ -7,22 +7,33 @@ use http::h2::{
     connection_preface,
     data_frame,
     decode_frame,
+    decode_push_promise_payload,
     encode_frame,
+    encode_push_promise_frames,
     empty_settings_frame,
     flag_ack,
     flag_end_headers,
     flag_end_stream,
+    frame_type_continuation,
     frame_type_headers,
+    frame_type_push_promise,
     frame_type_settings,
+    frame_wire_len,
     goaway_frame,
+    h2_end_headers_set,
     h2_prior_knowledge_get,
+    h2_prior_knowledge_two_gets,
     headers_frame,
+    headers_frames,
     headers_from_frame,
+    push_promise_frame,
     settings_ack_frame,
     settings_frame,
+    settings_id_header_table_size,
     window_update_frame,
 };
 use http::h2_session::{H2Session};
+use http::hpack::{decode_header_block};
 
 fn cat_bytes(Vec<byte> a, Vec<byte> b) -> Vec<byte> {
     let out: Vec<byte> = Vec::new();
@@ -549,4 +560,271 @@ test("fresh headers_from_frame cannot resolve C.3.2 dynamic index") {
         Result::Ok(_) => false,
         Result::Err(_) => true,
     }, "idx 62 empty")?;
+}
+
+fn rest_after_frame(Vec<byte> wire) -> Vec<byte> {
+    let n = frame_wire_len(wire);
+    let out: Vec<byte> = Vec::new();
+    let i = n;
+    while i < len(wire) {
+        out.push(wire[i]);
+        i = i + 1;
+    }
+    return out;
+}
+
+test("HEADERS plus CONTINUATION assemble before HPACK") {
+    let sess = boot_session();
+    let h = Headers::new();
+    h.add(":method", "GET");
+    h.add(":path", "/continuation-path");
+    h.add("x-trace", "www.example.com");
+    let wire = headers_frames(1, h, 1, 8);
+    let first = match decode_frame(wire) {
+        Result::Ok(v) => v,
+        Result::Err(_) => panic "first",
+    };
+    assert(first.typ == frame_type_headers(), "headers")?;
+    assert(h2_end_headers_set(first.flags) == 0, "no end headers")?;
+    let rest = rest_after_frame(wire);
+    let second = match decode_frame(rest) {
+        Result::Ok(v) => v,
+        Result::Err(_) => panic "cont",
+    };
+    assert(second.typ == frame_type_continuation(), "continuation")?;
+    match sess.feed(wire) {
+        Result::Ok(_) => 0,
+        Result::Err(_) => panic "feed split",
+    };
+    assert(sess.stream_count() == 1, "one")?;
+    let got = match sess.stream_headers(1) {
+        Result::Ok(v) => v,
+        Result::Err(_) => panic "headers",
+    };
+    assert(got.count() == 3, "three")?;
+    assert(got.value_at(0) == "GET", "GET")?;
+    assert(got.value_at(1) == "/continuation-path", "path")?;
+    assert(got.value_at(2) == "www.example.com", "host")?;
+    let ended = match sess.stream_ended(1) {
+        Result::Ok(v) => v,
+        Result::Err(_) => panic "ended",
+    };
+    assert(ended == 1, "end stream on headers")?;
+}
+
+test("incomplete HEADERS without CONTINUATION is not a stream yet") {
+    let sess = boot_session();
+    let h = Headers::new();
+    h.add("x-trace", "www.example.com");
+    let wire = headers_frames(1, h, 1, 4);
+    let first = match decode_frame(wire) {
+        Result::Ok(v) => v,
+        Result::Err(_) => panic "first",
+    };
+    match sess.feed(encode_frame(first)) {
+        Result::Ok(_) => 0,
+        Result::Err(_) => panic "partial",
+    };
+    assert(sess.stream_count() == 0, "waiting")?;
+    let rest = rest_after_frame(wire);
+    match sess.feed(rest) {
+        Result::Ok(_) => 0,
+        Result::Err(_) => panic "finish",
+    };
+    assert(sess.stream_count() == 1, "complete")?;
+}
+
+test("DATA between HEADERS and CONTINUATION is an error") {
+    let sess = boot_session();
+    let h = Headers::new();
+    h.add("x-trace", "www.example.com");
+    let wire = headers_frames(1, h, 0, 4);
+    let first = match decode_frame(wire) {
+        Result::Ok(v) => v,
+        Result::Err(_) => panic "first",
+    };
+    match sess.feed(encode_frame(first)) {
+        Result::Ok(_) => 0,
+        Result::Err(_) => panic "headers",
+    };
+    let body = to_bytes("x");
+    let r = sess.feed(encode_frame(data_frame(1, body, 1)));
+    assert(match r {
+        Result::Ok(_) => false,
+        Result::Err(_) => true,
+    }, "data during continuation")?;
+}
+
+test("SETTINGS_HEADER_TABLE_SIZE resizes the session table") {
+    let sess = boot_session();
+    assert(sess.hpack.cap == 4096, "default cap")?;
+    assert(sess.hpack.max_size == 4096, "default max")?;
+    let st = H2Settings::new();
+    st.add(settings_id_header_table_size(), 256);
+    match sess.feed(encode_frame(settings_frame(st))) {
+        Result::Ok(_) => 0,
+        Result::Err(_) => panic "settings",
+    };
+    assert(sess.hpack.cap == 256, "cap")?;
+    assert(sess.hpack.max_size == 256, "max")?;
+}
+
+test("SETTINGS_HEADER_TABLE_SIZE zero evicts dynamic entries") {
+    let sess = boot_session();
+    let first = hpack_octets(
+        130, 134, 132, 65, 15, 119, 119, 119, 46, 101, 120, 97, 109, 112, 108, 101, 46, 99, 111, 109
+    );
+    match sess.feed(encode_frame(raw_headers(1, first))) {
+        Result::Ok(_) => 0,
+        Result::Err(_) => panic "C.3.1",
+    };
+    let st = H2Settings::new();
+    st.add(settings_id_header_table_size(), 0);
+    match sess.feed(encode_frame(settings_frame(st))) {
+        Result::Ok(_) => 0,
+        Result::Err(_) => panic "resize 0",
+    };
+    assert(sess.hpack.max_size == 0, "max 0")?;
+    assert(sess.hpack.size == 0, "empty")?;
+    let second = hpack_octets(130, 134, 132, 190, 88, 8, 110, 111, 45, 99, 97, 99, 104, 101);
+    let r = sess.feed(encode_frame(raw_headers(3, second)));
+    assert(match r {
+        Result::Ok(_) => false,
+        Result::Err(_) => true,
+    }, "idx 62 gone")?;
+}
+
+test("PUSH_PROMISE parse stores promised request") {
+    let sess = boot_session();
+    let h = get_slash_headers();
+    match sess.feed(encode_frame(headers_frame(1, h, 1))) {
+        Result::Ok(_) => 0,
+        Result::Err(_) => panic "headers",
+    };
+    let ph = Headers::new();
+    ph.add(":method", "GET");
+    ph.add(":path", "/style.css");
+    ph.add(":authority", "example.com");
+    match sess.feed(encode_frame(push_promise_frame(1, 2, ph))) {
+        Result::Ok(_) => 0,
+        Result::Err(_) => panic "push",
+    };
+    assert(sess.push_count() == 1, "one push")?;
+    let pid = match sess.push_promised_id(0) {
+        Result::Ok(v) => v,
+        Result::Err(_) => panic "id",
+    };
+    assert(pid == 2, "promised 2")?;
+    let got = match sess.push_headers(2) {
+        Result::Ok(v) => v,
+        Result::Err(_) => panic "push headers",
+    };
+    assert(got.count() == 3, "three")?;
+    assert(got.value_at(0) == "GET", "GET")?;
+    assert(got.value_at(1) == "/style.css", "path")?;
+    assert(got.value_at(2) == "example.com", "auth")?;
+}
+
+test("queue_push emits PUSH_PROMISE") {
+    let sess = boot_session();
+    let h = get_slash_headers();
+    match sess.feed(encode_frame(headers_frame(1, h, 1))) {
+        Result::Ok(_) => 0,
+        Result::Err(_) => panic "headers",
+    };
+    sess.queue_push(1, 2, "GET", "/app.js", "example.com");
+    let out = sess.drain();
+    let f = match decode_frame(out) {
+        Result::Ok(v) => v,
+        Result::Err(_) => panic "decode push",
+    };
+    assert(f.typ == frame_type_push_promise(), "type")?;
+    assert(f.stream_id == 1, "associated")?;
+    assert(h2_end_headers_set(f.flags) == 1, "end headers")?;
+    let p = match decode_push_promise_payload(f.payload) {
+        Result::Ok(v) => v,
+        Result::Err(_) => panic "payload",
+    };
+    assert(p.promised_id == 2, "promised")?;
+    let decoded = match decode_header_block(p.block) {
+        Result::Ok(v) => v,
+        Result::Err(_) => panic "hpack",
+    };
+    assert(decoded.value_at(0) == "GET", "GET")?;
+    assert(decoded.value_at(1) == "/app.js", "path")?;
+    assert(decoded.value_at(2) == "example.com", "auth")?;
+}
+
+test("PUSH_PROMISE then CONTINUATION assembles") {
+    let sess = boot_session();
+    let h = get_slash_headers();
+    match sess.feed(encode_frame(headers_frame(1, h, 1))) {
+        Result::Ok(_) => 0,
+        Result::Err(_) => panic "headers",
+    };
+    let ph = Headers::new();
+    ph.add(":method", "GET");
+    ph.add(":path", "/pretty-long-pushed-asset.css");
+    ph.add(":authority", "www.example.com");
+    let wire = encode_push_promise_frames(1, 2, ph, 8);
+    let first = match decode_frame(wire) {
+        Result::Ok(v) => v,
+        Result::Err(_) => panic "pp",
+    };
+    assert(first.typ == frame_type_push_promise(), "push")?;
+    assert(h2_end_headers_set(first.flags) == 0, "no end")?;
+    match sess.feed(wire) {
+        Result::Ok(_) => 0,
+        Result::Err(_) => panic "feed pp split",
+    };
+    assert(sess.push_count() == 1, "one")?;
+    let got = match sess.push_headers(2) {
+        Result::Ok(v) => v,
+        Result::Err(_) => panic "headers",
+    };
+    assert(got.value_at(1) == "/pretty-long-pushed-asset.css", "path")?;
+}
+
+test("odd promised stream id is an error") {
+    let sess = boot_session();
+    let h = get_slash_headers();
+    match sess.feed(encode_frame(headers_frame(1, h, 1))) {
+        Result::Ok(_) => 0,
+        Result::Err(_) => panic "headers",
+    };
+    let ph = Headers::new();
+    ph.add(":method", "GET");
+    ph.add(":path", "/x");
+    let r = sess.feed(encode_frame(push_promise_frame(1, 3, ph)));
+    assert(match r {
+        Result::Ok(_) => false,
+        Result::Err(_) => true,
+    }, "odd promised")?;
+}
+
+test("two GET prior knowledge feeds stream 1 and 3") {
+    let u1 = match parse_url("http://example.com/a") {
+        Result::Ok(v) => v,
+        Result::Err(_) => panic "u1",
+    };
+    let u2 = match parse_url("http://example.com/b") {
+        Result::Ok(v) => v,
+        Result::Err(_) => panic "u2",
+    };
+    let sess = H2Session::new();
+    match sess.feed(h2_prior_knowledge_two_gets(u1, u2)) {
+        Result::Ok(_) => 0,
+        Result::Err(_) => panic "feed two",
+    };
+    assert(sess.stream_count() == 2, "two")?;
+    let h1 = match sess.stream_headers(1) {
+        Result::Ok(v) => v,
+        Result::Err(_) => panic "h1",
+    };
+    let h3 = match sess.stream_headers(3) {
+        Result::Ok(v) => v,
+        Result::Err(_) => panic "h3",
+    };
+    assert(h1.value_at(1) == "/a", "a")?;
+    assert(h3.value_at(1) == "/b", "b")?;
 }
