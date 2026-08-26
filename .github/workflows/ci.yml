@@ -17,7 +17,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: ardax-corp/coil-lang
-          ref: main
+          ref: cursor/generic-stream-attach-5f20
           path: coil-lang
 
       - uses: actions/checkout@v4
@@ -28,7 +28,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: ardax-corp/coil-tls
-          ref: main
+          ref: cursor/stream-attach-enable-e26d
           path: coil-tls
 
       - name: Install system deps
