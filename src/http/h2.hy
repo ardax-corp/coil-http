@@ -570,11 +570,6 @@ fn h2_close(Stream s) {
     };
 }
 
-/// Blocking read of `n` bytes. Waits on `WouldBlock`; EOF is BadResponse.
-fn h2_read_n(Stream s, int n) -> Result<Vec<byte>, HttpError> {
-    return h2_read_n_wait(s, n, 1)?;
-}
-
 /// `wait` 0: empty vec if no bytes are ready. Partial frames always wait to complete.
 fn h2_read_n_wait(Stream s, int n, int wait) -> Result<Vec<byte>, HttpError> {
     if n == 0 {
@@ -660,6 +655,11 @@ fn h2_read_n_wait(Stream s, int n, int wait) -> Result<Vec<byte>, HttpError> {
         };
     }
     return buf;
+}
+
+/// Blocking read of `n` bytes. Waits on `WouldBlock`; EOF is BadResponse.
+fn h2_read_n(Stream s, int n) -> Result<Vec<byte>, HttpError> {
+    return h2_read_n_wait(s, n, 1)?;
 }
 
 fn h2_write_frame(Stream s, H2Frame f) -> Result<(), HttpError> {
