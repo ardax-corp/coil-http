@@ -17,6 +17,7 @@ use http::h2::{
     h2_read_frame,
     h2_read_n,
     h2_server_alpn,
+    h2_try_read_frame,
     h2_write_frame,
     headers_frame,
 };
@@ -258,7 +259,29 @@ fn h2_write_bytes(Stream s, Vec<byte> wire) -> Result<(), HttpError> {
     return ();
 }
 
+fn h2_int_has(Vec<int> v, int x) -> int {
+    let i = 0;
+    while i < len(v) {
+        if v[i] == x {
+            return 1;
+        }
+        i = i + 1;
+    }
+    return 0;
+}
+
+fn h2_write_ok_headers(Stream conn, int sid) -> Result<(), HttpError> {
+    let rh = Headers::new();
+    rh.add(":status", "200");
+    return h2_write_frame(conn, headers_frame(sid, rh, 0))?;
+}
+
+fn h2_write_ok_data(Stream conn, int sid) -> Result<(), HttpError> {
+    return h2_write_frame(conn, data_frame(sid, to_bytes("ok"), 1))?;
+}
+
 /// Speak prior-knowledge HTTP/2 on an already-accepted (and optionally TLS) stream.
+/// Answers every ended stream with 200 `ok`. Starts all ready HEADERS before any DATA.
 fn h2_serve_conn(Stream conn) -> Result<(), HttpError> {
     match h2_write_frame(conn, empty_settings_frame()) {
         Result::Ok(_) => 0,
@@ -289,10 +312,12 @@ fn h2_serve_conn(Stream conn) -> Result<(), HttpError> {
             raise e;
         },
     };
+    let started: Vec<int> = Vec::new();
+    let answered: Vec<int> = Vec::new();
     let done = 0;
     let guard = 0;
     while done == 0 {
-        if guard >= 64 {
+        if guard >= 128 {
             h2_close_stream(conn);
             http_err_bad_response()?;
         }
@@ -317,8 +342,50 @@ fn h2_serve_conn(Stream conn) -> Result<(), HttpError> {
                 raise e;
             },
         };
-        if sess.stream_count() > 0 {
-            let ended = match sess.stream_ended(1) {
+        let more = 1;
+        while more == 1 {
+            let opt = match h2_try_read_frame(conn) {
+                Result::Ok(v) => v,
+                Result::Err(e) => {
+                    h2_close_stream(conn);
+                    raise e;
+                },
+            };
+            match opt {
+                Option::None => {
+                    more = 0;
+                    0
+                },
+                Option::Some(f2) => {
+                    match sess.feed(encode_frame(f2)) {
+                        Result::Ok(_) => 0,
+                        Result::Err(e) => {
+                            h2_close_stream(conn);
+                            raise e;
+                        },
+                    };
+                    match h2_write_bytes(conn, sess.drain()) {
+                        Result::Ok(_) => 0,
+                        Result::Err(e) => {
+                            h2_close_stream(conn);
+                            raise e;
+                        },
+                    };
+                    0
+                },
+            };
+        }
+        let n = sess.stream_count();
+        let i = 0;
+        while i < n {
+            let sid = match sess.stream_id_at(i) {
+                Result::Ok(v) => v,
+                Result::Err(e) => {
+                    h2_close_stream(conn);
+                    raise e;
+                },
+            };
+            let ended = match sess.stream_ended(sid) {
                 Result::Ok(v) => v,
                 Result::Err(e) => {
                     h2_close_stream(conn);
@@ -326,28 +393,41 @@ fn h2_serve_conn(Stream conn) -> Result<(), HttpError> {
                 },
             };
             if ended == 1 {
+                if h2_int_has(started, sid) == 0 {
+                    match h2_write_ok_headers(conn, sid) {
+                        Result::Ok(_) => 0,
+                        Result::Err(e) => {
+                            h2_close_stream(conn);
+                            raise e;
+                        },
+                    };
+                    started.push(sid);
+                }
+            }
+            i = i + 1;
+        }
+        let j = 0;
+        while j < len(started) {
+            let sid = started[j];
+            if h2_int_has(answered, sid) == 0 {
+                match h2_write_ok_data(conn, sid) {
+                    Result::Ok(_) => 0,
+                    Result::Err(e) => {
+                        h2_close_stream(conn);
+                        raise e;
+                    },
+                };
+                answered.push(sid);
+            }
+            j = j + 1;
+        }
+        if len(answered) > 0 {
+            if len(answered) == n {
                 done = 1;
             }
         }
         guard = guard + 1;
     }
-    let rh = Headers::new();
-    rh.add(":status", "200");
-    match h2_write_frame(conn, headers_frame(1, rh, 0)) {
-        Result::Ok(_) => 0,
-        Result::Err(e) => {
-            h2_close_stream(conn);
-            raise e;
-        },
-    };
-    match h2_write_frame(conn, data_frame(1, to_bytes("ok"), 1)) {
-        Result::Ok(_) => 0,
-        Result::Err(e) => {
-            h2_close_stream(conn);
-            raise e;
-        },
-    };
-    // Drain inbound SETTINGS ACK so close does not RST unread bytes.
     match h2_read_frame(conn) {
         Result::Ok(_) => 0,
         Result::Err(_) => 0,
