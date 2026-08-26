@@ -10,10 +10,14 @@ use http::h2::{
     encode_frame,
     empty_settings_frame,
     flag_ack,
+    flag_end_headers,
+    flag_end_stream,
+    frame_type_headers,
     frame_type_settings,
     goaway_frame,
     h2_prior_knowledge_get,
     headers_frame,
+    headers_from_frame,
     settings_ack_frame,
     settings_frame,
     window_update_frame,
@@ -483,4 +487,66 @@ test("data on stream zero is an error") {
         Result::Ok(_) => false,
         Result::Err(_) => true,
     }, "data stream 0")?;
+}
+
+fn hpack_octets(int... xs) -> Vec<byte> {
+    let out: Vec<byte> = Vec::new();
+    let i = 0;
+    while i < len(xs) {
+        out.push(xs[i] as byte);
+        i = i + 1;
+    }
+    return out;
+}
+
+fn raw_headers(int sid, Vec<byte> payload) -> H2Frame {
+    return H2Frame::new(
+        frame_type_headers(),
+        flag_end_headers() + flag_end_stream(),
+        sid,
+        payload
+    );
+}
+
+test("session decoder table persists C.3 dynamic index across HEADERS") {
+    // RFC 7541 C.3.1 then C.3.2: second block indexes :authority from the first.
+    let sess = boot_session();
+    let first = hpack_octets(
+        130, 134, 132, 65, 15, 119, 119, 119, 46, 101, 120, 97, 109, 112, 108, 101, 46, 99, 111, 109
+    );
+    let second = hpack_octets(130, 134, 132, 190, 88, 8, 110, 111, 45, 99, 97, 99, 104, 101);
+    match sess.feed(encode_frame(raw_headers(1, first))) {
+        Result::Ok(_) => 0,
+        Result::Err(_) => panic "C.3.1 headers",
+    };
+    match sess.feed(encode_frame(raw_headers(3, second))) {
+        Result::Ok(_) => 0,
+        Result::Err(_) => panic "C.3.2 headers",
+    };
+    assert(sess.stream_count() == 2, "two streams")?;
+    let h1 = match sess.stream_headers(1) {
+        Result::Ok(v) => v,
+        Result::Err(_) => panic "h1",
+    };
+    assert(h1.count() == 4, "c31 four")?;
+    assert(h1.value_at(3) == "www.example.com", "c31 host")?;
+    let h3 = match sess.stream_headers(3) {
+        Result::Ok(v) => v,
+        Result::Err(_) => panic "h3",
+    };
+    assert(h3.count() == 5, "c32 five")?;
+    assert(h3.value_at(0) == "GET", "GET")?;
+    assert(h3.name_at(3) == ":authority", "auth")?;
+    assert(h3.value_at(3) == "www.example.com", "host from table")?;
+    assert(h3.name_at(4) == "cache-control", "cc")?;
+    assert(h3.value_at(4) == "no-cache", "no-cache")?;
+}
+
+test("fresh headers_from_frame cannot resolve C.3.2 dynamic index") {
+    let second = hpack_octets(130, 134, 132, 190, 88, 8, 110, 111, 45, 99, 97, 99, 104, 101);
+    let r = headers_from_frame(raw_headers(1, second));
+    assert(match r {
+        Result::Ok(_) => false,
+        Result::Err(_) => true,
+    }, "idx 62 empty")?;
 }

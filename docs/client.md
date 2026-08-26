@@ -46,4 +46,4 @@ Parsed responses expose `status`, `body`, and `header_get(r, "Name")`.
 
 `HttpError`: `BadUrl`, `BadResponse`, `UnsupportedScheme`, `Io`, `NotSupported`.
 
-HTTPS uses verified TLS (`webpki` roots via [coil-tls](https://github.com/ardax-corp/coil-tls)). Local dev certs need raw `tls::client::enable`.
+HTTPS uses verified TLS (`webpki` roots via [coil-tls](https://github.com/ardax-corp/coil-tls)). Local dev certs need `tls::client::enable` with a `ClientOpts` (`verify: false` and/or `ca_pem`).

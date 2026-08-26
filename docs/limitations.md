@@ -1,6 +1,6 @@
 # Limitations (v1)
 
-- HTTP/1.1 only on the wire (see [h2.md](h2.md), [h3.md](h3.md))
+- HTTP/1.1 on the wire; HTTP/2 cleartext prior-knowledge and TLS ALPN `h2` (see [h2.md](h2.md), [h3.md](h3.md))
 - No redirects or cookies
 - Connection pool reuses TCP and frames each message by `Content-Length` or chunked transfer encoding
 - `fn drop()` on `HttpConn` / `ConnPool` / `Client` / `Server` closes owned sockets at GC time (and VM teardown), not RAII. Prefer `Client::close` / `close_conn` when shutdown must happen now
@@ -18,4 +18,4 @@
 
 ## TLS
 
-Client: verified TLS only. Server: PEM cert/key via `Server::tls`. Requires the [coil-tls](https://github.com/ardax-corp/coil-tls) package (`use tls::{client, server}`) and a built `libtls`, not a Coil `tls` Cargo feature.
+Client: verified TLS only (`new ClientOpts(true, ...)`). Server: PEM cert/key via `Server::tls` (`new ServerOpts(...)`). Requires the [coil-tls](https://github.com/ardax-corp/coil-tls) package (`use tls::{client, server}::enable`) and a built `libtls`, not a Coil `tls` Cargo feature.
