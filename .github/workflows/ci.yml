@@ -24,11 +24,6 @@ jobs:
           repository: ardax-corp/coil-stdlib
           path: coil-stdlib
 
-      - uses: actions/checkout@v4
-        with:
-          repository: ardax-corp/coil-tls
-          path: coil-tls
-
       - name: Install system deps
         run: sudo apt-get update && sudo apt-get install -y libffi-dev build-essential
 
@@ -39,13 +34,22 @@ jobs:
         working-directory: coil-lang
         run: cargo build
 
+      - name: Install tls from coil.lock
+        working-directory: coil-http
+        run: |
+          set -euo pipefail
+          chmod +x scripts/spool_install.sh
+          ./scripts/spool_install.sh
+          test -d .spool/deps/tls/src
+          test -d .spool/deps/tls/native
+
       - name: Build coil-tls native
-        working-directory: coil-tls/native
+        working-directory: coil-http/.spool/deps/tls/native
         run: |
           set -euo pipefail
           make artifact
           if [ ! -f libtls.so ] && [ ! -f libtls.dylib ] && [ ! -f tls.dll ]; then
-            echo "libtls not on [ffi] search_paths (coil-tls/native)" >&2
+            echo "libtls not on [ffi] search_paths (.spool/deps/tls/native)" >&2
             ls -la
             exit 1
           fi
@@ -55,12 +59,12 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p coil-http/native
-          if [ -f coil-tls/native/libtls.so ]; then
-            cp coil-tls/native/libtls.so coil-http/native/
-          elif [ -f coil-tls/native/libtls.dylib ]; then
-            cp coil-tls/native/libtls.dylib coil-http/native/
+          if [ -f coil-http/.spool/deps/tls/native/libtls.so ]; then
+            cp coil-http/.spool/deps/tls/native/libtls.so coil-http/native/
+          elif [ -f coil-http/.spool/deps/tls/native/libtls.dylib ]; then
+            cp coil-http/.spool/deps/tls/native/libtls.dylib coil-http/native/
           else
-            cp coil-tls/native/tls.dll coil-http/native/
+            cp coil-http/.spool/deps/tls/native/tls.dll coil-http/native/
           fi
 
       - name: Forbid leftover io::__tls import

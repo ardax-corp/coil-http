@@ -1,6 +1,7 @@
 // HPACK (RFC 7541): static table, Huffman encode/decode, dynamic table.
 // Encode uses Huffman (H=1) when the coded string is shorter; otherwise H=0.
-// Header fields still use indexed static entries or literal without indexing.
+// Literals use incremental indexing (RFC 7541 §6.2.1) so a later block on the
+// same HpackTable can emit a dynamic index.
 use io::{from_bytes, to_bytes};
 use http::url::{
     HttpError,
@@ -868,6 +869,38 @@ fn hpack_table_resize(HpackTable t, int cap) {
     }
 }
 
+fn hpack_dynamic_match(HpackTable t, string name, string value) -> int {
+    let count = len(t.names);
+    let found = 0;
+    let i = 0;
+    while i < count {
+        if t.names[i] == name {
+            if t.values[i] == value {
+                found = 62 + (count - 1 - i);
+            }
+        }
+        i = i + 1;
+    }
+    return found;
+}
+
+fn hpack_name_index(HpackTable t, string name) -> int {
+    let si = hpack_static_name_index(name);
+    if si != 0 {
+        return si;
+    }
+    let count = len(t.names);
+    let found = 0;
+    let i = 0;
+    while i < count {
+        if t.names[i] == name {
+            found = 62 + (count - 1 - i);
+        }
+        i = i + 1;
+    }
+    return found;
+}
+
 fn hpack_lookup_name(HpackTable t, int idx) -> Result<string, HttpError> {
     if idx <= 0 {
         http_err_bad_response()?;
@@ -922,8 +955,8 @@ fn decode_hpack_nv(Vec<byte> raw, int pos, int nbits, HpackTable t) -> Result<Hp
     return HpackNV::new(name, vs.value, vs.next);
 }
 
-/// HEADERS payload: indexed static fields (1xxxxxxx) or literal without indexing (0000xxxx).
-fn encode_header_block(Headers h) -> Vec<byte> {
+/// HEADERS payload: indexed (1xxxxxxx) or literal with incremental indexing (01xxxxxx).
+fn encode_header_block_with(Headers h, HpackTable t) -> Vec<byte> {
     let out: Vec<byte> = Vec::new();
     let i = 0;
     let n = h.count();
@@ -932,18 +965,27 @@ fn encode_header_block(Headers h) -> Vec<byte> {
         let value = h.value_at(i);
         let both = hpack_static_match(name, value);
         if both == 0 {
-            let ni = hpack_static_name_index(name);
-            encode_hpack_int(out, ni, 4, 0);
+            both = hpack_dynamic_match(t, name, value);
+        }
+        if both == 0 {
+            let ni = hpack_name_index(t, name);
+            encode_hpack_int(out, ni, 6, 1);
             if ni == 0 {
                 encode_hpack_string(out, name);
             }
             encode_hpack_string(out, value);
+            hpack_table_add(t, name, value);
         } else {
             encode_hpack_int(out, both, 7, 1);
         }
         i = i + 1;
     }
     return out;
+}
+
+/// One-shot encode into a fresh 4096-octet table.
+fn encode_header_block(Headers h) -> Vec<byte> {
+    return encode_header_block_with(h, HpackTable::new(4096));
 }
 
 /// Decode a HEADERS payload, mutating `t` (incremental indexing / size updates).

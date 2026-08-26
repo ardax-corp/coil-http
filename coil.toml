@@ -3,10 +3,10 @@ name = "http"
 version = "0.1.0"
 
 [dependencies]
-tls = { path = "../coil-tls" }
+tls = { git = "https://github.com/ardax-corp/coil-tls.git", version = "^0.1" }
 
 [module]
-roots = ["./src", "../coil-stdlib/src", "../coil-tls/src"]
+roots = ["./src", "../coil-stdlib/src", "./.spool/deps/tls/src"]
 
 [ffi]
-search_paths = ["../coil-tls/native"]
+search_paths = ["./.spool/deps/tls/native"]
