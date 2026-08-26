@@ -1,5 +1,6 @@
-// HPACK (RFC 7541): static table, Huffman decode, dynamic table.
-// Encode stays raw strings (H=0) and literal without indexing.
+// HPACK (RFC 7541): static table, Huffman encode/decode, dynamic table.
+// Encode uses Huffman (H=1) when the coded string is shorter; otherwise H=0.
+// Header fields still use indexed static entries or literal without indexing.
 use io::{from_bytes, to_bytes};
 use http::url::{
     HttpError,
@@ -462,14 +463,60 @@ fn decode_hpack_huffman(Vec<byte> raw) -> Result<string, HttpError> {
     return hpack_bytes_to_str(outb)?;
 }
 
-/// Raw string literal, Huffman bit H=0 (RFC 7541 §5.2).
+/// RFC 7541 Appendix B Huffman coding, padded with 1-bits to an octet boundary.
+fn encode_hpack_huffman(Vec<byte> raw) -> Vec<byte> {
+    let codes: Vec<int> = Vec::new();
+    let lens: Vec<int> = Vec::new();
+    huff_fill(codes, lens);
+    let out: Vec<byte> = Vec::new();
+    let acc = 0;
+    let nbits = 0;
+    let i = 0;
+    while i < len(raw) {
+        let ch = hpack_u8(raw, i);
+        let code = codes[ch];
+        let blen = lens[ch];
+        let bitpos = blen - 1;
+        while bitpos >= 0 {
+            let bit = (code >> bitpos) & 1;
+            acc = (acc << 1) | bit;
+            nbits = nbits + 1;
+            if nbits == 8 {
+                hpack_push_u8(out, acc);
+                acc = 0;
+                nbits = 0;
+            }
+            bitpos = bitpos - 1;
+        }
+        i = i + 1;
+    }
+    if nbits > 0 {
+        let pad = 8 - nbits;
+        let ones = hpack_pow2(pad) - 1;
+        acc = (acc << pad) | ones;
+        hpack_push_u8(out, acc);
+    }
+    return out;
+}
+
+/// String literal: Huffman (H=1) when strictly shorter, otherwise raw (H=0).
 fn encode_hpack_string(Vec<byte> out, string s) {
     let b = to_bytes(s);
-    encode_hpack_int(out, len(b), 7, 0);
-    let i = 0;
-    while i < len(b) {
-        out.push(b[i]);
-        i = i + 1;
+    let huff = encode_hpack_huffman(b);
+    if len(huff) < len(b) {
+        encode_hpack_int(out, len(huff), 7, 1);
+        let i = 0;
+        while i < len(huff) {
+            out.push(huff[i]);
+            i = i + 1;
+        }
+    } else {
+        encode_hpack_int(out, len(b), 7, 0);
+        let i = 0;
+        while i < len(b) {
+            out.push(b[i]);
+            i = i + 1;
+        }
     }
 }
 
@@ -807,6 +854,18 @@ fn hpack_table_set_max(HpackTable t, int max) -> Result<(), HttpError> {
         hpack_table_evict_oldest(t);
     }
     return ();
+}
+
+/// Apply SETTINGS_HEADER_TABLE_SIZE: both decoder cap and max become `cap`.
+fn hpack_table_resize(HpackTable t, int cap) {
+    if cap < 0 {
+        cap = 0;
+    }
+    t.cap = cap;
+    t.max_size = cap;
+    while t.size > t.max_size {
+        hpack_table_evict_oldest(t);
+    }
 }
 
 fn hpack_lookup_name(HpackTable t, int idx) -> Result<string, HttpError> {
