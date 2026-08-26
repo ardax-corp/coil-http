@@ -11,8 +11,10 @@ use http::h2::{
     frame_type_goaway,
     frame_type_headers,
     frame_type_ping,
+    frame_type_push_promise,
     frame_type_settings,
     frame_type_window_update,
+    frame_type_continuation,
     frame_wire_len,
     h2_connect,
     preface_ok,
@@ -223,4 +225,9 @@ test("data_frame end stream flag") {
     assert(len(open.payload) == 2, "len")?;
     let ended = data_frame(3, body, 1);
     assert(ended.flags == 1, "end stream")?;
+}
+
+test("continuation and push_promise type ids") {
+    assert(frame_type_push_promise() == 5, "push")?;
+    assert(frame_type_continuation() == 9, "cont")?;
 }
