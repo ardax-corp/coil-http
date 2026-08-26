@@ -8,14 +8,18 @@ HTTPS uses the [coil-tls](https://github.com/ardax-corp/coil-tls) package (`use 
 
 ```toml
 # coil.toml
+[dependencies]
+http = { git = "https://github.com/ardax-corp/coil-http.git", version = "^0.1" }
+tls = { git = "https://github.com/ardax-corp/coil-tls.git", version = "^0.1" }
+
 [module]
-roots = ["./src", "../coil-http/src", "../coil-stdlib/src", "../coil-tls/src"]
+roots = ["./src", "./.spool/deps/http", "./.spool/deps/tls/src", "../coil-stdlib/src"]
 
 [ffi]
-search_paths = ["../coil-tls/native"]
+search_paths = ["./.spool/deps/tls/native"]
 ```
 
-Build `libtls` from the coil-tls checkout (`make` or `cargo build` under `native/`) so `dload("tls")` can find it.
+`spool install` (or this repo's `scripts/spool_install.sh`) fetches tls from `coil.lock`. Build `libtls` in `.spool/deps/tls/native` so `dload("tls")` can find it. Native `.so` delivery is not a spool feature yet.
 
 ```coil
 use http::client::Client;
@@ -33,7 +37,9 @@ fn main() {
 
 ```bash
 # from coil-http (coil on PATH or ../coil-lang/target/debug/coil)
-# siblings: coil-lang, coil-stdlib, coil-tls; libtls on [ffi] search_paths
+# siblings: coil-lang, coil-stdlib; tls sources from coil.lock
+./scripts/spool_install.sh
+make -C .spool/deps/tls/native artifact
 coil test
 
 # or from coil-lang checkout:
