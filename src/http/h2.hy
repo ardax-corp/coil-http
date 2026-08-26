@@ -22,7 +22,7 @@ use http::response::{Response, bytes_slice_resp, parse_response};
 use http::conn::{HttpConn, close_conn, read_http_message};
 use io::{Stream, close as io_close, read, to_bytes, IoError, await_readable};
 use io::net::tcp::connect as tcp_connect;
-use tls::client::enable as tls_enable;
+use tls::client::{enable as tls_enable, ClientOpts};
 use tls::alpn_protocol;
 use io::sync::{write_all};
 
@@ -640,24 +640,17 @@ fn h2_alpn_is_h2(string proto) -> int {
 }
 
 fn h2_tls_enable(Stream tcp, string host, bool verify, string ca_pem) -> Result<Stream, HttpError> {
-    let s = tcp;
+    let ca = Option::None;
     if ca_pem != "" {
-        s = match tls_enable(tcp, host, { verify: verify, ca_pem: Option::Some(ca_pem), ca_path: Option::None, timeout_ms: 5000, alpn: h2_client_alpn() }) {
-            Result::Ok(v) => v,
-            Result::Err(_) => {
-                h2_close(tcp);
-                http_fail_stream()?
-            },
-        };
-    } else {
-        s = match tls_enable(tcp, host, { verify: verify, ca_pem: Option::None, ca_path: Option::None, timeout_ms: 5000, alpn: h2_client_alpn() }) {
-            Result::Ok(v) => v,
-            Result::Err(_) => {
-                h2_close(tcp);
-                http_fail_stream()?
-            },
-        };
+        ca = Option::Some(ca_pem);
     }
+    let s = match tls_enable(tcp, host, new ClientOpts(verify, ca, Option::None, 5000, h2_client_alpn())) {
+        Result::Ok(v) => v,
+        Result::Err(_) => {
+            h2_close(tcp);
+            http_fail_stream()?
+        },
+    };
     return s;
 }
 

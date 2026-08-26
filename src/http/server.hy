@@ -1,7 +1,7 @@
 // HTTP/1.1 cleartext/TLS server.
 use io::{Stream, close as io_close, to_bytes};
 use io::net::tcp::{listen, local_addr};
-use tls::server::enable as tls_server_enable;
+use tls::server::{enable as tls_server_enable, ServerOpts};
 use tls::alpn_protocol;
 use io::sync::{accept_wait, write_all};
 
@@ -124,7 +124,7 @@ fn serve_once(Server srv, HttpHandler handler) -> Result<(), HttpError> {
     };
     let stream = conn;
     if srv.use_tls == 1 {
-        stream = match tls_server_enable(conn, { cert_pem: srv.tls_cert, key_pem: srv.tls_key, timeout_ms: 0, client_ca_pem: "", alpn: "" }) {
+        stream = match tls_server_enable(conn, new ServerOpts(srv.tls_cert, srv.tls_key, 0, "", "")) {
             Result::Ok(s) => s,
             Result::Err(_) => http_fail_stream()?,
         };
@@ -192,7 +192,7 @@ fn serve_one_client(Server srv, HttpHandler handler) -> Result<(), HttpError> {
     };
     let stream = conn;
     if srv.use_tls == 1 {
-        stream = match tls_server_enable(conn, { cert_pem: srv.tls_cert, key_pem: srv.tls_key, timeout_ms: 0, client_ca_pem: "", alpn: "" }) {
+        stream = match tls_server_enable(conn, new ServerOpts(srv.tls_cert, srv.tls_key, 0, "", "")) {
             Result::Ok(s) => s,
             Result::Err(_) => http_fail_stream()?,
         };
@@ -217,7 +217,7 @@ fn serve(Server srv, HttpHandler handler) -> Result<(), HttpError> {
         if keep == 1 {
             let stream = conn;
             if srv.use_tls == 1 {
-                stream = match tls_server_enable(conn, { cert_pem: srv.tls_cert, key_pem: srv.tls_key, timeout_ms: 0, client_ca_pem: "", alpn: "" }) {
+                stream = match tls_server_enable(conn, new ServerOpts(srv.tls_cert, srv.tls_key, 0, "", "")) {
                     Result::Ok(s) => s,
                     Result::Err(_) => {
                         keep = 0;
@@ -368,7 +368,7 @@ fn h2_serve_once(Server srv) -> Result<(), HttpError> {
     };
     let stream = conn;
     if srv.use_tls == 1 {
-        stream = match tls_server_enable(conn, { cert_pem: srv.tls_cert, key_pem: srv.tls_key, timeout_ms: 5000, client_ca_pem: "", alpn: h2_server_alpn() }) {
+        stream = match tls_server_enable(conn, new ServerOpts(srv.tls_cert, srv.tls_key, 5000, "", h2_server_alpn())) {
             Result::Ok(s) => s,
             Result::Err(_) => {
                 h2_close_stream(conn);
