@@ -3,7 +3,7 @@ name = "http"
 version = "0.1.0"
 
 [dependencies]
-tls = { git = "https://github.com/ardax-corp/coil-tls.git" }
+tls = { git = "https://github.com/ardax-corp/coil-tls.git", version = "^0.1" }
 
 [module]
 roots = ["./src", "../coil-stdlib/src", "./.spool/deps/tls/src"]

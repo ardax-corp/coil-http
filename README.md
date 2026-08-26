@@ -10,7 +10,7 @@ HTTPS uses the [coil-tls](https://github.com/ardax-corp/coil-tls) package (`use 
 # coil.toml
 [dependencies]
 http = { git = "https://github.com/ardax-corp/coil-http.git", version = "^0.1" }
-tls = { git = "https://github.com/ardax-corp/coil-tls.git" }
+tls = { git = "https://github.com/ardax-corp/coil-tls.git", version = "^0.1" }
 
 [module]
 roots = ["./src", "./.spool/deps/http", "./.spool/deps/tls/src", "../coil-stdlib/src"]

@@ -6,7 +6,7 @@ This package depends on `tls` via spool (`coil.lock`), not a `../coil-tls` path:
 
 ```toml
 [dependencies]
-tls = { git = "https://github.com/ardax-corp/coil-tls.git" }
+tls = { git = "https://github.com/ardax-corp/coil-tls.git", version = "^0.1" }
 
 [module]
 roots = ["./src", "../coil-stdlib/src", "./.spool/deps/tls/src"]
@@ -15,6 +15,8 @@ roots = ["./src", "../coil-stdlib/src", "./.spool/deps/tls/src"]
 search_paths = ["./.spool/deps/tls/native"]
 ```
 
+The compiler requires `version` on git deps; `coil.lock` is the pin until [COI-219](https://linear.app/ardax/issue/COI-219).
+
 `spool install` (or `scripts/spool_install.sh` when the spool CLI is not on PATH) materializes `.spool/deps/tls` from `coil.lock`. Build the cdylib in that tree (`make -C .spool/deps/tls/native artifact`) so `libtls.so` (or `.dylib` / `tls.dll`) sits on `[ffi] search_paths`. Native artifact publishing is not spool's job yet ([COI-60](https://linear.app/ardax/issue/COI-60)).
 
 Via spool (when this package is published):
@@ -22,7 +24,7 @@ Via spool (when this package is published):
 ```toml
 [dependencies]
 http = { git = "https://github.com/ardax-corp/coil-http.git", version = "^0.1" }
-tls = { git = "https://github.com/ardax-corp/coil-tls.git" }
+tls = { git = "https://github.com/ardax-corp/coil-tls.git", version = "^0.1" }
 
 [module]
 roots = ["./src", "./.spool/deps/http", "./.spool/deps/tls/src"]
