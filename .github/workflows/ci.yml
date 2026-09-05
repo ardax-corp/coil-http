@@ -18,6 +18,8 @@ jobs:
         with:
           repository: ardax-corp/coil-lang
           path: coil-lang
+          # Last toolchain coil-http main was developed against (2026-08-26).
+          ref: 5b3fb8b28591642a556dc30920d4f0efd24f35e7
 
       - uses: actions/checkout@v4
         with:
@@ -98,3 +100,7 @@ jobs:
       - name: HTTP/2 TLS ALPN loopback
         working-directory: coil-http
         run: ../coil-lang/target/debug/coil examples/h2_tls_loopback.hy | grep -q ok
+
+      - name: WebSocket echo loopback
+        working-directory: coil-http
+        run: ../coil-lang/target/debug/coil examples/ws_loopback.hy | grep -q ok
