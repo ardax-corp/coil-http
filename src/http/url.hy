@@ -10,7 +10,7 @@ enum HttpError {
     NotSupported,
 }
 
-/// Parsed `http`/`https` URL (scheme, host, port, path).
+/// Parsed `http`/`https`/`ws`/`wss` URL (scheme, host, port, path).
 class Url {
     scheme: string,
     host: string,
@@ -259,7 +259,7 @@ fn http_fail_unit() -> Result<(), HttpError> {
     raise HttpError::Io;
 }
 
-/// Parse `http://` or `https://` URL string.
+/// Parse `http://`, `https://`, `ws://`, or `wss://` URL string.
 fn parse_url(string s) -> Result<Url, HttpError> {
     let b = to_bytes(s);
     let sep = to_bytes("://");
@@ -341,7 +341,13 @@ fn parse_url(string s) -> Result<Url, HttpError> {
     if scheme == "https" {
         port = 443;
     }
+    if scheme == "wss" {
+        port = 443;
+    }
     if scheme == "http" {
+        port = 80;
+    }
+    if scheme == "ws" {
         port = 80;
     }
     if has_port == 1 {
@@ -377,6 +383,12 @@ fn parse_url(string s) -> Result<Url, HttpError> {
         return new Url(scheme, host, port, path);
     }
     if scheme == "https" {
+        return new Url(scheme, host, port, path);
+    }
+    if scheme == "ws" {
+        return new Url(scheme, host, port, path);
+    }
+    if scheme == "wss" {
         return new Url(scheme, host, port, path);
     }
     http_err_unsupported_scheme()?;

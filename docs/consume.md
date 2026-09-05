@@ -33,4 +33,4 @@ roots = ["./src", "./.spool/deps/http", "./.spool/deps/tls/src"]
 search_paths = ["./.spool/deps/tls/native"]
 ```
 
-Imports use the `http::` prefix (`use http::client::Client`). TLS stays `use tls::{client, server}`.
+Imports use the `http::` prefix (`use http::client::Client`). TLS stays `use tls::{client, server}`. WebSocket is `use http::ws::{ws_connect, ws_serve_once}`.

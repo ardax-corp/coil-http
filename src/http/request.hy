@@ -144,7 +144,17 @@ fn host_header_value(Url u) -> Result<string, HttpError> {
             return host;
         }
     }
+    if scheme == "ws" {
+        if port == 80 {
+            return host;
+        }
+    }
     if scheme == "https" {
+        if port == 443 {
+            return host;
+        }
+    }
+    if scheme == "wss" {
         if port == 443 {
             return host;
         }
@@ -333,12 +343,24 @@ fn build_head_prefix(string method, Url u) -> string {
             host_hdr = host + ":" + int_to_dec(port);
         }
     } else {
-        if scheme == "https" {
-            if port != 443 {
+        if scheme == "ws" {
+            if port != 80 {
                 host_hdr = host + ":" + int_to_dec(port);
             }
         } else {
-            host_hdr = host + ":" + int_to_dec(port);
+            if scheme == "https" {
+                if port != 443 {
+                    host_hdr = host + ":" + int_to_dec(port);
+                }
+            } else {
+                if scheme == "wss" {
+                    if port != 443 {
+                        host_hdr = host + ":" + int_to_dec(port);
+                    }
+                } else {
+                    host_hdr = host + ":" + int_to_dec(port);
+                }
+            }
         }
     }
     return method + " " + path + " HTTP/1.1\r\nHost: " + host_hdr + "\r\nContent-Length: ";
@@ -359,49 +381,15 @@ fn build_request_head_keepalive(string method, Url u, Headers headers, int body_
 }
 
 fn build_request_head_extras(string method, Url u, string extras, int body_len) -> Result<Vec<byte>, HttpError> {
-    let host = u.host;
-    let port = u.port;
-    let scheme = u.scheme;
-    let path = u.path;
-    let host_hdr = host;
-    if scheme == "http" {
-        if port != 80 {
-            host_hdr = host + ":" + int_to_dec(port);
-        }
-    } else {
-        if scheme == "https" {
-            if port != 443 {
-                host_hdr = host + ":" + int_to_dec(port);
-            }
-        } else {
-            host_hdr = host + ":" + int_to_dec(port);
-        }
-    }
-    let prefix = method + " " + path + " HTTP/1.1\r\nHost: " + host_hdr + "\r\n" + extras + "Content-Length: ";
+    let host_hdr = host_header_value(u)?;
+    let prefix = method + " " + u.path + " HTTP/1.1\r\nHost: " + host_hdr + "\r\n" + extras + "Content-Length: ";
     let rest = cl_trailer(body_len);
     return concat_bytes(to_bytes(prefix), to_bytes(rest));
 }
 
 fn build_request_head_extras_keepalive(string method, Url u, string extras, int body_len) -> Result<Vec<byte>, HttpError> {
-    let host = u.host;
-    let port = u.port;
-    let scheme = u.scheme;
-    let path = u.path;
-    let host_hdr = host;
-    if scheme == "http" {
-        if port != 80 {
-            host_hdr = host + ":" + int_to_dec(port);
-        }
-    } else {
-        if scheme == "https" {
-            if port != 443 {
-                host_hdr = host + ":" + int_to_dec(port);
-            }
-        } else {
-            host_hdr = host + ":" + int_to_dec(port);
-        }
-    }
-    let prefix = method + " " + path + " HTTP/1.1\r\nHost: " + host_hdr + "\r\n" + extras + "Content-Length: ";
+    let host_hdr = host_header_value(u)?;
+    let prefix = method + " " + u.path + " HTTP/1.1\r\nHost: " + host_hdr + "\r\n" + extras + "Content-Length: ";
     let rest = ka_trailer(body_len);
     return concat_bytes(to_bytes(prefix), to_bytes(rest));
 }
