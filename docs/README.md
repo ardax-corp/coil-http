@@ -9,6 +9,7 @@ Userland HTTP/1.1 client and server for Coil programs.
 | [server.md](server.md) | `Server`, `HttpHandler` |
 | [limitations.md](limitations.md) | v1 scope and compiler notes |
 | [h2.md](h2.md) | HTTP/2 framing, HPACK, ALPN |
+| [ws.md](ws.md) | WebSocket RFC 6455 (H1 upgrade) |
 | [h3.md](h3.md) | HTTP/3 stub / QUIC strategy |
 
 ## Requirements

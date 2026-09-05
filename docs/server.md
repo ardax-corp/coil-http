@@ -36,6 +36,7 @@ fn main() {
 | `serve(handler)` | Accept loop |
 | `h2_serve_once` | One connection, HTTP/2 prior-knowledge (every ended stream gets `ok`); TLS+ALPN `h2` when `Server.tls` is set |
 | `h2_serve` | Same as `h2_serve_once`, requires `Server.tls` |
+| `ws_serve_once` (`http::ws`) | Accept one connection and complete a WebSocket upgrade |
 
 `Server::drop` closes the listener if still bound. That runs at GC time; unbind deterministically by dropping after `serve` returns, or process exit.
 

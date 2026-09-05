@@ -46,4 +46,6 @@ Parsed responses expose `status`, `body`, and `header_get(r, "Name")`.
 
 `HttpError`: `BadUrl`, `BadResponse`, `UnsupportedScheme`, `Io`, `NotSupported`.
 
+WebSocket URLs (`ws://`, `wss://`) use `http::ws::ws_connect`, not `Client::get`. See [ws.md](ws.md).
+
 HTTPS uses verified TLS (`webpki` roots via [coil-tls](https://github.com/ardax-corp/coil-tls)). Local dev certs need `tls::client::enable` with a `ClientOpts` (`verify: false` and/or `ca_pem`).

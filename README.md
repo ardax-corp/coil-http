@@ -62,6 +62,8 @@ Add `../coil-http/src` to your `[module].roots` when running tests from another 
 | `src/http/conn.hy` | Request read helpers |
 | `src/http/pool.hy` | TCP/TLS connection pool (keep-alive) |
 | `src/http/h2.hy` | HTTP/2 framing, HPACK, prior-knowledge + TLS ALPN |
+| `src/http/ws.hy` | WebSocket RFC 6455 (H1 upgrade + framing) |
+| `src/http/sha1.hy` | SHA-1 for `Sec-WebSocket-Accept` only |
 | `src/http/h3.hy` | HTTP/3 stub |
 
 See [docs/](docs/) for API details.
