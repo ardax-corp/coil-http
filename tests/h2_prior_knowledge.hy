@@ -118,8 +118,7 @@ test("prior knowledge settings then headers wire lengths") {
         Result::Ok(v) => v,
         Result::Err(_) => panic "headers",
     };
-    assert(headers.flags / 4 % 2 == 1, "END_HEADERS")?;
-    assert(headers.flags % 2 == 1, "END_STREAM")?;
+    assert(headers.flags == 5, "END_HEADERS+END_STREAM")?;
 }
 
 test("prior knowledge with custom port feeds session ended stream") {
