@@ -5,6 +5,7 @@ use http::h2::{
     H2Frame,
     H2Settings,
     connection_preface,
+    continuation_frame,
     data_frame,
     decode_frame,
     decode_push_promise_payload,
@@ -800,6 +801,40 @@ test("odd promised stream id is an error") {
         Result::Ok(_) => false,
         Result::Err(_) => true,
     }, "odd promised")?;
+}
+
+test("goaway after headers keeps stream readable") {
+    let sess = boot_session();
+    let h = get_slash_headers();
+    match sess.feed(encode_frame(headers_frame(1, h, 1))) {
+        Result::Ok(_) => 0,
+        Result::Err(_) => panic "headers",
+    };
+    match sess.feed(encode_frame(goaway_frame(1, 0))) {
+        Result::Ok(_) => 0,
+        Result::Err(_) => panic "goaway",
+    };
+    assert(sess.stream_count() == 1, "still one")?;
+    let got = match sess.stream_headers(1) {
+        Result::Ok(v) => v,
+        Result::Err(_) => panic "headers after goaway",
+    };
+    assert(got.value_at(0) == "GET", "GET")?;
+    let ended = match sess.stream_ended(1) {
+        Result::Ok(v) => v,
+        Result::Err(_) => panic "ended",
+    };
+    assert(ended == 1, "ended")?;
+}
+
+test("orphan continuation without headers is an error") {
+    let sess = boot_session();
+    let frag = to_bytes("xx");
+    let r = sess.feed(encode_frame(continuation_frame(1, frag, 1)));
+    assert(match r {
+        Result::Ok(_) => false,
+        Result::Err(_) => true,
+    }, "orphan cont")?;
 }
 
 test("two GET prior knowledge feeds stream 1 and 3") {
