@@ -102,6 +102,25 @@ test("prior knowledge wire is preface settings then stream-1 headers") {
     assert(decoded.value_at(3) == "example.com:8080", "authority")?;
 }
 
+test("prior knowledge settings then headers wire lengths") {
+    let u = must_url("http://example.com/");
+    let wire = h2_prior_knowledge_get(u);
+    let pref = connection_preface();
+    let after = bytes_slice_after(wire, len(pref));
+    let settings = match decode_frame(after) {
+        Result::Ok(v) => v,
+        Result::Err(_) => panic "settings",
+    };
+    assert(settings.flags == 0, "not ack")?;
+    assert(len(settings.payload) == 0, "empty settings")?;
+    let rest = bytes_slice_after(after, 9);
+    let headers = match decode_frame(rest) {
+        Result::Ok(v) => v,
+        Result::Err(_) => panic "headers",
+    };
+    assert(headers.flags == 5, "END_HEADERS+END_STREAM")?;
+}
+
 test("prior knowledge with custom port feeds session ended stream") {
     let u = must_url("http://127.0.0.1:9443/ping");
     let sess = H2Session::new();

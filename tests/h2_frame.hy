@@ -7,6 +7,7 @@ use http::h2::{
     decode_frame,
     empty_settings_frame,
     encode_frame,
+    continuation_frame,
     frame_type_data,
     frame_type_goaway,
     frame_type_headers,
@@ -230,4 +231,23 @@ test("data_frame end stream flag") {
 test("continuation and push_promise type ids") {
     assert(frame_type_push_promise() == 5, "push")?;
     assert(frame_type_continuation() == 9, "cont")?;
+}
+
+test("continuation frame wire roundtrip") {
+    let block = to_bytes("hdr-frag");
+    let open = continuation_frame(3, block, 0);
+    assert(open.typ == frame_type_continuation(), "type")?;
+    assert(open.flags == 0, "no end")?;
+    assert(open.stream_id == 3, "sid")?;
+    let ended = continuation_frame(3, block, 1);
+    assert(ended.flags == 4, "END_HEADERS")?;
+    let g = match decode_frame(encode_frame(ended)) {
+        Result::Ok(v) => v,
+        Result::Err(_) => panic "cont wire",
+    };
+    assert(g.typ == 9, "type 9")?;
+    assert(g.flags == 4, "end headers")?;
+    assert(g.stream_id == 3, "sid")?;
+    assert(len(g.payload) == 8, "frag")?;
+    assert(g.payload[0] == ("h" as byte), "h")?;
 }

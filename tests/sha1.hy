@@ -28,3 +28,13 @@ test("sha1 abc") {
     expect_byte(d, 3, 54, "a3");
     expect_byte(d, 19, 157, "a19");
 }
+
+test("sha1 rfc 3174 two-block") {
+    let d = sha1(to_bytes("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq"));
+    // 84983e441c3bd26ebaae4aa1f95129e5e54670f1
+    expect_byte(d, 0, 132, "t0");
+    expect_byte(d, 1, 152, "t1");
+    expect_byte(d, 2, 62, "t2");
+    expect_byte(d, 3, 68, "t3");
+    expect_byte(d, 19, 241, "t19");
+}
