@@ -53,7 +53,7 @@ class H2Session {
 }
 
 impl H2Session {
-    static fn new() -> H2Session {
+    pub static fn new() -> H2Session {
         let buf: Vec<byte> = Vec::new();
         let outgoing: Vec<byte> = Vec::new();
         let ids: Vec<int> = Vec::new();
@@ -96,7 +96,7 @@ impl H2Session {
         );
     }
 
-    fn find_id(int sid) -> int {
+    pub fn find_id(int sid) -> int {
         let i = 0;
         let n = len(self.ids);
         while i < n {
@@ -108,7 +108,7 @@ impl H2Session {
         return 999999;
     }
 
-    fn queue_frame(H2Frame f) {
+    pub fn queue_frame(H2Frame f) {
         let wire = encode_frame(f);
         let i = 0;
         while i < len(wire) {
@@ -117,7 +117,7 @@ impl H2Session {
         }
     }
 
-    fn try_preface() -> Result<(), HttpError> {
+    pub fn try_preface() -> Result<(), HttpError> {
         let want = connection_preface();
         let have = len(self.buf);
         let check = have;
@@ -139,7 +139,7 @@ impl H2Session {
         return ();
     }
 
-    fn on_settings(H2Frame f) -> Result<(), HttpError> {
+    pub fn on_settings(H2Frame f) -> Result<(), HttpError> {
         if f.stream_id != 0 {
             http_err_bad_response()?;
         }
@@ -152,7 +152,7 @@ impl H2Session {
         return ();
     }
 
-    fn require_client_sid(int sid) -> Result<(), HttpError> {
+    pub fn require_client_sid(int sid) -> Result<(), HttpError> {
         if sid == 0 {
             http_err_bad_response()?;
         }
@@ -162,7 +162,7 @@ impl H2Session {
         return ();
     }
 
-    fn store_headers(int sid, int end_stream, Headers h) -> Result<(), HttpError> {
+    pub fn store_headers(int sid, int end_stream, Headers h) -> Result<(), HttpError> {
         let idx = self.find_id(sid);
         if idx != 999999 {
             http_err_bad_response()?;
@@ -182,13 +182,13 @@ impl H2Session {
         return ();
     }
 
-    fn finish_headers(int sid, int end_stream, Vec<byte> block) -> Result<(), HttpError> {
+    pub fn finish_headers(int sid, int end_stream, Vec<byte> block) -> Result<(), HttpError> {
         self.require_client_sid(sid)?;
         let h = decode_header_block_with(block, self.hpack)?;
         return self.store_headers(sid, end_stream, h)?;
     }
 
-    fn finish_push(int associated, int promised, Vec<byte> block) -> Result<(), HttpError> {
+    pub fn finish_push(int associated, int promised, Vec<byte> block) -> Result<(), HttpError> {
         self.require_client_sid(associated)?;
         if self.find_id(associated) == 999999 {
             http_err_bad_response()?;
@@ -212,7 +212,7 @@ impl H2Session {
         return ();
     }
 
-    fn clear_cont() {
+    pub fn clear_cont() {
         self.cont_on = 0;
         self.cont_sid = 0;
         self.cont_end_stream = 0;
@@ -222,7 +222,7 @@ impl H2Session {
         self.cont_buf = empty;
     }
 
-    fn on_headers(H2Frame f) -> Result<(), HttpError> {
+    pub fn on_headers(H2Frame f) -> Result<(), HttpError> {
         self.require_client_sid(f.stream_id)?;
         if h2_end_headers_set(f.flags) == 1 {
             let h = headers_from_frame_with(f, self.hpack)?;
@@ -237,7 +237,7 @@ impl H2Session {
         return ();
     }
 
-    fn on_push_promise(H2Frame f) -> Result<(), HttpError> {
+    pub fn on_push_promise(H2Frame f) -> Result<(), HttpError> {
         self.require_client_sid(f.stream_id)?;
         if self.find_id(f.stream_id) == 999999 {
             http_err_bad_response()?;
@@ -255,7 +255,7 @@ impl H2Session {
         return ();
     }
 
-    fn on_continuation(H2Frame f) -> Result<(), HttpError> {
+    pub fn on_continuation(H2Frame f) -> Result<(), HttpError> {
         if self.cont_on == 0 {
             http_err_bad_response()?;
         }
@@ -282,7 +282,7 @@ impl H2Session {
         return self.finish_headers(sid, es, block)?;
     }
 
-    fn queue_push(int associated, int promised, string method, string path, string authority) {
+    pub fn queue_push(int associated, int promised, string method, string path, string authority) {
         let h = Headers::new();
         h.add(":method", method);
         h.add(":path", path);
@@ -290,7 +290,7 @@ impl H2Session {
         self.queue_frame(push_promise_frame(associated, promised, h));
     }
 
-    fn append_body(int idx, Vec<byte> payload) {
+    pub fn append_body(int idx, Vec<byte> payload) {
         let newb: Vec<byte> = Vec::new();
         let starts: Vec<int> = Vec::new();
         let i = 0;
@@ -322,7 +322,7 @@ impl H2Session {
         self.blob = newb;
     }
 
-    fn on_data(H2Frame f) -> Result<(), HttpError> {
+    pub fn on_data(H2Frame f) -> Result<(), HttpError> {
         self.require_client_sid(f.stream_id)?;
         let idx = self.find_id(f.stream_id);
         if idx == 999999 {
@@ -338,7 +338,7 @@ impl H2Session {
         return ();
     }
 
-    fn on_frame(H2Frame f) -> Result<(), HttpError> {
+    pub fn on_frame(H2Frame f) -> Result<(), HttpError> {
         if self.cont_on == 1 {
             if f.typ != frame_type_continuation() {
                 http_err_bad_response()?;
@@ -380,7 +380,7 @@ impl H2Session {
         return ();
     }
 
-    fn feed(Vec<byte> chunk) -> Result<(), HttpError> {
+    pub fn feed(Vec<byte> chunk) -> Result<(), HttpError> {
         let i = 0;
         while i < len(chunk) {
             self.buf.push(chunk[i]);
@@ -407,18 +407,18 @@ impl H2Session {
         return ();
     }
 
-    fn drain() -> Vec<byte> {
+    pub fn drain() -> Vec<byte> {
         let out = self.outgoing;
         let empty: Vec<byte> = Vec::new();
         self.outgoing = empty;
         return out;
     }
 
-    fn stream_count() -> int {
+    pub fn stream_count() -> int {
         return len(self.ids);
     }
 
-    fn stream_headers(int sid) -> Result<Headers, HttpError> {
+    pub fn stream_headers(int sid) -> Result<Headers, HttpError> {
         let idx = self.find_id(sid);
         if idx == 999999 {
             http_err_bad_response()?;
@@ -439,7 +439,7 @@ impl H2Session {
         return h;
     }
 
-    fn stream_body(int sid) -> Result<Vec<byte>, HttpError> {
+    pub fn stream_body(int sid) -> Result<Vec<byte>, HttpError> {
         let idx = self.find_id(sid);
         if idx == 999999 {
             http_err_bad_response()?;
@@ -448,7 +448,7 @@ impl H2Session {
         return bytes_slice(self.blob, off, off + self.blen[idx]);
     }
 
-    fn stream_ended(int sid) -> Result<int, HttpError> {
+    pub fn stream_ended(int sid) -> Result<int, HttpError> {
         let idx = self.find_id(sid);
         if idx == 999999 {
             http_err_bad_response()?;
@@ -456,7 +456,7 @@ impl H2Session {
         return self.ended[idx];
     }
 
-    fn stream_id_at(int i) -> Result<int, HttpError> {
+    pub fn stream_id_at(int i) -> Result<int, HttpError> {
         if i < 0 {
             http_err_bad_response()?;
         }
@@ -466,11 +466,11 @@ impl H2Session {
         return self.ids[i];
     }
 
-    fn push_count() -> int {
+    pub fn push_count() -> int {
         return len(self.push_ids);
     }
 
-    fn push_promised_id(int i) -> Result<int, HttpError> {
+    pub fn push_promised_id(int i) -> Result<int, HttpError> {
         if i < 0 {
             http_err_bad_response()?;
         }
@@ -480,7 +480,7 @@ impl H2Session {
         return self.push_ids[i];
     }
 
-    fn push_headers(int promised_id) -> Result<Headers, HttpError> {
+    pub fn push_headers(int promised_id) -> Result<Headers, HttpError> {
         let idx = 999999;
         let i = 0;
         let n = len(self.push_ids);
