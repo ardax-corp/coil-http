@@ -24,7 +24,7 @@ use http::h2::{
 use http::h2_session::{H2Session};
 
 trait HttpHandler<H> {
-    pub fn handle(H self, IncomingRequest req) -> Response;
+    fn handle(H self, IncomingRequest req) -> Response;
 }
 
 class Server {
