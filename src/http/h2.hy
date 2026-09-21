@@ -27,49 +27,49 @@ use tls::alpn_protocol;
 use io::sync::{write_all};
 
 class H2Frame {
-    typ: int,
-    flags: int,
-    stream_id: int,
-    payload: Vec<byte>,
+    pub typ: int,
+    pub flags: int,
+    pub stream_id: int,
+    pub payload: Vec<byte>,
 }
 
 impl H2Frame {
-    static fn new(int typ, int flags, int stream_id, Vec<byte> payload) -> H2Frame {
+    pub static fn new(int typ, int flags, int stream_id, Vec<byte> payload) -> H2Frame {
         return new H2Frame(typ, flags, stream_id, payload);
     }
 }
 
 /// SETTINGS identifier/value pairs (RFC 7540 §6.5).
 class H2Settings {
-    ids: Vec<int>,
-    values: Vec<int>,
+    pub ids: Vec<int>,
+    pub values: Vec<int>,
 }
 
 impl H2Settings {
-    static fn new() -> H2Settings {
+    pub static fn new() -> H2Settings {
         let ids: Vec<int> = Vec::new();
         let values: Vec<int> = Vec::new();
         return new H2Settings(ids, values);
     }
 
-    fn add(int id, int value) {
+    pub fn add(int id, int value) {
         self.ids.push(id);
         self.values.push(value);
     }
 
-    fn count() -> int {
+    pub fn count() -> int {
         return len(self.ids);
     }
 }
 
 /// GOAWAY last-stream-id and error code (RFC 7540 §6.8). Debug data after 8 bytes is ignored on decode.
 class H2Goaway {
-    last_stream_id: int,
-    error_code: int,
+    pub last_stream_id: int,
+    pub error_code: int,
 }
 
 impl H2Goaway {
-    static fn new(int last_stream_id, int error_code) -> H2Goaway {
+    pub static fn new(int last_stream_id, int error_code) -> H2Goaway {
         return new H2Goaway(last_stream_id, error_code);
     }
 }
@@ -427,12 +427,12 @@ fn headers_frames(int stream_id, Headers h, int end_stream, int max_payload) -> 
 
 /// PUSH_PROMISE promised-id plus remaining header-block fragment.
 class H2Push {
-    promised_id: int,
-    block: Vec<byte>,
+    pub promised_id: int,
+    pub block: Vec<byte>,
 }
 
 impl H2Push {
-    static fn new(int promised_id, Vec<byte> block) -> H2Push {
+    pub static fn new(int promised_id, Vec<byte> block) -> H2Push {
         return new H2Push(promised_id, block);
     }
 }
@@ -860,12 +860,12 @@ fn h2_get_over_h2(Stream s, Url u) -> Result<Response, HttpError> {
 
 /// Two responses from one multiplexed GET pair (streams 1 and 3).
 class H2Pair {
-    first: Response,
-    second: Response,
+    pub first: Response,
+    pub second: Response,
 }
 
 impl H2Pair {
-    static fn new(Response first, Response second) -> H2Pair {
+    pub static fn new(Response first, Response second) -> H2Pair {
         return new H2Pair(first, second);
     }
 }
