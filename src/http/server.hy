@@ -37,11 +37,11 @@ class Server {
 }
 
 impl Server {
-    static fn new() -> Server {
+    pub static fn new() -> Server {
         return new Server("127.0.0.1", 0, Option::None, "", "", 0);
     }
 
-    fn bind(string host, int port) -> Result<(), HttpError> {
+    pub fn bind(string host, int port) -> Result<(), HttpError> {
         let listener = match listen(host, port) {
             Result::Ok(s) => s,
             Result::Err(_) => http_fail_stream()?,
@@ -52,13 +52,13 @@ impl Server {
         return ();
     }
 
-    fn tls(string cert_pem, string key_pem) {
+    pub fn tls(string cert_pem, string key_pem) {
         self.tls_cert = cert_pem;
         self.tls_key = key_pem;
         self.use_tls = 1;
     }
 
-    fn bound_port() -> Result<int, HttpError> {
+    pub fn bound_port() -> Result<int, HttpError> {
         if match self.listener {
             Option::None => true,
             Option::Some(_) => false,

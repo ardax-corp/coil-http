@@ -12,62 +12,62 @@ enum HttpError {
 
 /// Parsed `http`/`https`/`ws`/`wss` URL (scheme, host, port, path).
 class Url {
-    scheme: string,
-    host: string,
-    port: int,
-    path: string,
+    pub scheme: string,
+    pub host: string,
+    pub port: int,
+    pub path: string,
 }
 
 /// Parallel name/value header pairs for requests and responses.
 class Headers {
-    names: Vec<string>,
-    values: Vec<string>,
+    pub names: Vec<string>,
+    pub values: Vec<string>,
 }
 
 impl Headers {
     /// Empty header list.
-    static fn new() -> Headers {
+    pub static fn new() -> Headers {
         let names: Vec<string> = Vec::new();
         let values: Vec<string> = Vec::new();
         return new Headers(names, values);
     }
 
     /// Append a header name/value pair.
-    fn add(string name, string value) {
+    pub fn add(string name, string value) {
         self.names.push(name);
         self.values.push(value);
     }
 
     /// Number of header pairs.
-    fn count() -> int {
+    pub fn count() -> int {
         return len(self.names);
     }
 
     /// Header name at index `i`.
-    fn name_at(int i) -> string {
+    pub fn name_at(int i) -> string {
         return self.names[i];
     }
 
     /// Header value at index `i`.
-    fn value_at(int i) -> string {
+    pub fn value_at(int i) -> string {
         return self.values[i];
     }
 }
 
 impl Url {
-    fn scheme_val() -> string {
+    pub fn scheme_val() -> string {
         return self.scheme;
     }
 
-    fn host_val() -> string {
+    pub fn host_val() -> string {
         return self.host;
     }
 
-    fn port_val() -> int {
+    pub fn port_val() -> int {
         return self.port;
     }
 
-    fn path_val() -> string {
+    pub fn path_val() -> string {
         return self.path;
     }
 }

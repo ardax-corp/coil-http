@@ -11,31 +11,31 @@ use http::url::{
 
 /// Parsed HTTP response (status, headers, body).
 class Response {
-    status: int,
-    header_names: Vec<string>,
-    header_values: Vec<string>,
-    body: Vec<byte>,
+    pub status: int,
+    pub header_names: Vec<string>,
+    pub header_values: Vec<string>,
+    pub body: Vec<byte>,
 }
 
 impl Response {
     /// 200 OK with empty body and headers.
-    static fn ok() -> Response {
+    pub static fn ok() -> Response {
         let names: Vec<string> = Vec::new();
         let values: Vec<string> = Vec::new();
         let body: Vec<byte> = Vec::new();
         return new Response(200, names, values, body);
     }
 
-    fn status(int code) {
+    pub fn status(int code) {
         self.status = code;
     }
 
-    fn header(string name, string value) {
+    pub fn header(string name, string value) {
         self.header_names.push(name);
         self.header_values.push(value);
     }
 
-    fn body(Vec<byte> b) {
+    pub fn body(Vec<byte> b) {
         self.body = b;
     }
 }

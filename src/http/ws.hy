@@ -25,14 +25,14 @@ use http::conn::{HttpConn, close_conn, read_http_message};
 use http::server::{Server};
 
 class WsFrame {
-    fin: int,
-    opcode: int,
-    masked: int,
-    payload: Vec<byte>,
+    pub fin: int,
+    pub opcode: int,
+    pub masked: int,
+    pub payload: Vec<byte>,
 }
 
 impl WsFrame {
-    static fn new(int fin, int opcode, int masked, Vec<byte> payload) -> WsFrame {
+    pub static fn new(int fin, int opcode, int masked, Vec<byte> payload) -> WsFrame {
         return new WsFrame(fin, opcode, masked, payload);
     }
 }

@@ -7,10 +7,10 @@ use http::response::{bytes_slice_resp, find_header_end, header_block_body_len, p
 
 /// Stream plus bytes pulled past the current message (keep-alive / pipelining).
 class HttpConn {
-    inner: Stream,
-    leftover: Vec<byte>,
-    reusable: int,
-    closed: int,
+    pub inner: Stream,
+    pub leftover: Vec<byte>,
+    pub reusable: int,
+    pub closed: int,
 }
 
 fn close_conn(HttpConn c) {
@@ -25,16 +25,16 @@ fn close_conn(HttpConn c) {
 }
 
 impl HttpConn {
-    static fn wrap(Stream s) -> HttpConn {
+    pub static fn wrap(Stream s) -> HttpConn {
         let leftover: Vec<byte> = Vec::new();
         return new HttpConn(s, leftover, 1, 0);
     }
 
-    fn stream() -> Stream {
+    pub fn stream() -> Stream {
         return self.inner;
     }
 
-    fn can_reuse() -> int {
+    pub fn can_reuse() -> int {
         return self.reusable;
     }
 

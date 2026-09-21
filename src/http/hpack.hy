@@ -12,53 +12,53 @@ use http::url::{
 
 /// Integer decode cursor (RFC 7541 §5.1).
 class HpackInt {
-    value: int,
-    next: int,
+    pub value: int,
+    pub next: int,
 }
 
 impl HpackInt {
-    static fn new(int value, int next) -> HpackInt {
+    pub static fn new(int value, int next) -> HpackInt {
         return new HpackInt(value, next);
     }
 }
 
 /// String literal decode cursor (RFC 7541 §5.2).
 class HpackStr {
-    value: string,
-    next: int,
+    pub value: string,
+    pub next: int,
 }
 
 impl HpackStr {
-    static fn new(string value, int next) -> HpackStr {
+    pub static fn new(string value, int next) -> HpackStr {
         return new HpackStr(value, next);
     }
 }
 
 /// Literal name/value plus resume offset.
 class HpackNV {
-    name: string,
-    value: string,
-    next: int,
+    pub name: string,
+    pub value: string,
+    pub next: int,
 }
 
 impl HpackNV {
-    static fn new(string name, string value, int next) -> HpackNV {
+    pub static fn new(string name, string value, int next) -> HpackNV {
         return new HpackNV(name, value, next);
     }
 }
 
 /// Decoder dynamic table (RFC 7541 §2.3). `cap` is SETTINGS_HEADER_TABLE_SIZE.
 class HpackTable {
-    names: Vec<string>,
-    values: Vec<string>,
-    cap: int,
-    max_size: int,
-    size: int,
+    pub names: Vec<string>,
+    pub values: Vec<string>,
+    pub cap: int,
+    pub max_size: int,
+    pub size: int,
 }
 
 impl HpackTable {
     /// Empty table; `cap` is the SETTINGS limit (RFC default 4096).
-    static fn new(int cap) -> HpackTable {
+    pub static fn new(int cap) -> HpackTable {
         let names: Vec<string> = Vec::new();
         let values: Vec<string> = Vec::new();
         return new HpackTable(names, values, cap, cap, 0);

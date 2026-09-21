@@ -15,48 +15,48 @@ use http::url::{
 
 /// Outbound HTTP request (method, URL string, headers, body).
 class Request {
-    method: string,
-    url_str: string,
-    headers: Headers,
-    body: Vec<byte>,
+    pub method: string,
+    pub url_str: string,
+    pub headers: Headers,
+    pub body: Vec<byte>,
 }
 
 impl Request {
-    static fn new() -> Request {
+    pub static fn new() -> Request {
         let hs = empty_headers();
         let body: Vec<byte> = Vec::new();
         return new Request("GET", "", hs, body);
     }
 
-    fn method(string m) {
+    pub fn method(string m) {
         self.method = m;
     }
 
-    fn url(string u) {
+    pub fn url(string u) {
         self.url_str = u;
     }
 
-    fn header(string name, string value) {
+    pub fn header(string name, string value) {
         self.headers.add(name, value);
     }
 
-    fn body(Vec<byte> b) {
+    pub fn body(Vec<byte> b) {
         self.body = b;
     }
 
-    fn method_val() -> string {
+    pub fn method_val() -> string {
         return self.method;
     }
 
-    fn url_val() -> string {
+    pub fn url_val() -> string {
         return self.url_str;
     }
 
-    fn headers_val() -> Headers {
+    pub fn headers_val() -> Headers {
         return self.headers;
     }
 
-    fn body_val() -> Vec<byte> {
+    pub fn body_val() -> Vec<byte> {
         return self.body;
     }
 }

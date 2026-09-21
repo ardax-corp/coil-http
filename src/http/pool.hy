@@ -21,24 +21,24 @@ class ConnPool {
 }
 
 impl ConnPool {
-    static fn new() -> ConnPool {
+    pub static fn new() -> ConnPool {
         let keys: Vec<string> = Vec::new();
         let conns: Vec<HttpConn> = Vec::new();
         return new ConnPool(keys, conns, 4);
     }
 
-    fn max(int n) {
+    pub fn max(int n) {
         self.max_size = n;
     }
 
-    fn pool_key(Url u) -> string {
+    pub fn pool_key(Url u) -> string {
         let scheme = u.scheme;
         let host = u.host;
         let port = u.port;
         return scheme + "://" + host + ":" + int_to_dec(port);
     }
 
-    fn open_stream(Url u) -> Result<Stream, HttpError> {
+    pub fn open_stream(Url u) -> Result<Stream, HttpError> {
         let scheme = url_scheme(u)?;
         let host = url_host(u)?;
         let port = url_port(u)?;
@@ -68,7 +68,7 @@ impl ConnPool {
         return http_fail_stream()?;
     }
 
-    fn acquire(Url u) -> Result<HttpConn, HttpError> {
+    pub fn acquire(Url u) -> Result<HttpConn, HttpError> {
         let key = self.pool_key(u);
         let i = 0;
         let n = len(self.keys);
@@ -90,7 +90,7 @@ impl ConnPool {
         return HttpConn::wrap(s);
     }
 
-    fn release(Url u, HttpConn c) {
+    pub fn release(Url u, HttpConn c) {
         if len(self.conns) >= self.max_size {
             close_conn(c);
             return;
@@ -100,11 +100,11 @@ impl ConnPool {
         self.conns.push(c);
     }
 
-    fn discard(HttpConn c) {
+    pub fn discard(HttpConn c) {
         close_conn(c);
     }
 
-    fn clear() {
+    pub fn clear() {
         let i = 0;
         while i < len(self.conns) {
             close_conn(self.conns[i]);
