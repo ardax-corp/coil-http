@@ -14,27 +14,27 @@ use http::response::{Response, find_crlf, find_header_end, bytes_slice_resp, par
 
 /// Parsed inbound HTTP/1.1 request (server side).
 class IncomingRequest {
-    method: string,
-    path: string,
-    version: string,
-    headers: Headers,
-    body: Vec<byte>,
+    pub method: string,
+    pub path: string,
+    pub version: string,
+    pub headers: Headers,
+    pub body: Vec<byte>,
 }
 
 impl IncomingRequest {
-    fn method_val() -> string {
+    pub fn method_val() -> string {
         return self.method;
     }
 
-    fn path_val() -> string {
+    pub fn path_val() -> string {
         return self.path;
     }
 
-    fn headers_val() -> Headers {
+    pub fn headers_val() -> Headers {
         return self.headers;
     }
 
-    fn body_val() -> Vec<byte> {
+    pub fn body_val() -> Vec<byte> {
         return self.body;
     }
 }

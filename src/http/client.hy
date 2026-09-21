@@ -37,16 +37,16 @@ class Client {
 }
 
 impl Client {
-    static fn new() -> Client {
+    pub static fn new() -> Client {
         let p = ConnPool::new();
         return new Client(p, 1);
     }
 
-    fn no_pool() {
+    pub fn no_pool() {
         self.use_pool = 0;
     }
 
-    fn close() {
+    pub fn close() {
         self.pool.clear();
     }
 
@@ -55,7 +55,7 @@ impl Client {
         self.use_pool = self.use_pool;
     }
 
-    fn request_send(Vec<byte> head, Url u, Vec<byte> body) -> Result<Response, HttpError> {
+    pub fn request_send(Vec<byte> head, Url u, Vec<byte> body) -> Result<Response, HttpError> {
         let msg = concat_bytes(head, body);
         let c = self.pool.acquire(u)?;
         match write_all(c.stream(), msg) {
@@ -93,7 +93,7 @@ impl Client {
         return resp;
     }
 
-    fn send(Request req) -> Result<Response, HttpError> {
+    pub fn send(Request req) -> Result<Response, HttpError> {
         let method = req.method_val();
         let url = req.url_val();
         let headers = req.headers_val();
@@ -137,14 +137,14 @@ impl Client {
         return self.request_send(head, u, body)?;
     }
 
-    fn get(string url) -> Result<Response, HttpError> {
+    pub fn get(string url) -> Result<Response, HttpError> {
         let req = Request::new();
         req.method("GET");
         req.url(url);
         return self.send(req)?;
     }
 
-    fn post(string url, Vec<byte> body) -> Result<Response, HttpError> {
+    pub fn post(string url, Vec<byte> body) -> Result<Response, HttpError> {
         let req = Request::new();
         req.method("POST");
         req.url(url);
