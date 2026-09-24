@@ -18,8 +18,8 @@ jobs:
         with:
           repository: ardax-corp/coil-lang
           path: coil-lang
-          # Last toolchain coil-http main was developed against (2026-08-26).
-          ref: 5b3fb8b28591642a556dc30920d4f0efd24f35e7
+          # coil-lang #457: park/resume Result<(), IoError> matches Ok (COI-408).
+          ref: 9819a3d2a25d4fb9ae70b41cb85d325507cdee46
 
       - uses: actions/checkout@v4
         with:
