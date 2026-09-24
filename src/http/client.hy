@@ -30,6 +30,7 @@ use http::response::{
 };
 use http::pool::{ConnPool};
 use http::conn::{read_http_message};
+use http::h2_session::{h2_connect, h2_request};
 
 class Client {
     pool: ConnPool,
@@ -150,6 +151,22 @@ impl Client {
         req.url(url);
         req.body(body);
         return self.send(req)?;
+    }
+
+    /// HTTP/2 GET. Cleartext sends the connection preface. HTTPS uses ALPN.
+    pub fn h2_get(string url) -> Result<Response, HttpError> {
+        return h2_connect(url)?;
+    }
+
+    /// HTTP/2 POST with a request body.
+    pub fn h2_post(string url, Vec<byte> body) -> Result<Response, HttpError> {
+        let extra = Headers::new();
+        return h2_request(url, "POST", extra, body)?;
+    }
+
+    /// HTTP/2 request using the same builder fields as `send`.
+    pub fn h2_send(Request req) -> Result<Response, HttpError> {
+        return h2_request(req.url_val(), req.method_val(), req.headers_val(), req.body_val())?;
     }
 }
 
