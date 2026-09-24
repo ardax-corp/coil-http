@@ -9,21 +9,14 @@ use http::url::{
     HttpError,
     Headers,
     Url,
-    empty_headers,
     http_err_bad_response,
-    http_err_bad_url,
     http_err_io,
-    http_fail_stream,
     http_fail_unit,
-    parse_url,
 };
 use http::request::{build_request_head};
 use http::response::{Response, bytes_slice_resp, parse_response};
 use http::conn::{HttpConn, close_conn, read_http_message};
 use io::{Stream, close as io_close, read, to_bytes, IoError, await_readable};
-use io::net::tcp::connect as tcp_connect;
-use tls::client::{enable as tls_enable, ClientOpts};
-use tls::alpn_protocol;
 use io::sync::{write_all};
 
 class H2Frame {
@@ -102,12 +95,56 @@ fn frame_type_window_update() -> int {
     return 8;
 }
 
+fn frame_type_priority() -> int {
+    return 2;
+}
+
+fn frame_type_rst_stream() -> int {
+    return 3;
+}
+
 fn frame_type_continuation() -> int {
     return 9;
 }
 
 fn settings_id_header_table_size() -> int {
     return 1;
+}
+
+fn settings_id_enable_push() -> int {
+    return 2;
+}
+
+fn settings_id_max_concurrent() -> int {
+    return 3;
+}
+
+fn settings_id_initial_window() -> int {
+    return 4;
+}
+
+fn settings_id_max_frame_size() -> int {
+    return 5;
+}
+
+fn h2_max_frame_setting() -> int {
+    return 16777215;
+}
+
+fn h2_err_protocol() -> int {
+    return 1;
+}
+
+fn h2_err_flow_control() -> int {
+    return 3;
+}
+
+fn h2_err_frame_size() -> int {
+    return 6;
+}
+
+fn h2_err_refused_stream() -> int {
+    return 7;
 }
 
 fn default_max_frame_payload() -> int {
@@ -132,6 +169,11 @@ fn flag_end_headers() -> int {
 
 fn two31() -> int {
     return 128 * 16777216;
+}
+
+/// Largest HTTP/2 flow-control window (2^31 - 1).
+fn h2_max_window() -> int {
+    return two31() - 1;
 }
 
 fn push_u8(Vec<byte> out, int n) {
@@ -326,6 +368,31 @@ fn decode_goaway_payload(Vec<byte> raw) -> Result<H2Goaway, HttpError> {
 
 fn goaway_frame(int last_stream_id, int error_code) -> H2Frame {
     return H2Frame::new(frame_type_goaway(), 0, 0, encode_goaway_payload(last_stream_id, error_code));
+}
+
+/// PING payload is exactly 8 bytes. `ack` nonzero sets the ACK flag.
+fn ping_frame(Vec<byte> payload, int ack) -> Result<H2Frame, HttpError> {
+    if len(payload) != 8 {
+        http_err_bad_response()?;
+    }
+    let flags = 0;
+    if ack != 0 {
+        flags = flag_ack();
+    }
+    return H2Frame::new(frame_type_ping(), flags, 0, payload);
+}
+
+fn rst_stream_frame(int stream_id, int error_code) -> H2Frame {
+    let payload: Vec<byte> = Vec::new();
+    push_u32(payload, error_code);
+    return H2Frame::new(frame_type_rst_stream(), 0, stream_id, payload);
+}
+
+fn decode_rst_payload(Vec<byte> raw) -> Result<int, HttpError> {
+    if len(raw) != 4 {
+        http_err_bad_response()?;
+    }
+    return u32_at(raw, 0);
 }
 
 /// HEADERS frame with HPACK payload. END_HEADERS is always set; END_STREAM when `end_stream` is nonzero.
@@ -523,13 +590,23 @@ fn h2_authority(Url u) -> string {
     return host + ":" + int_to_dec(port);
 }
 
-fn h2_get_request_headers(Url u) -> Headers {
+fn h2_request_headers(Url u, string method, Headers extra) -> Headers {
     let h = Headers::new();
-    h.add(":method", "GET");
+    h.add(":method", method);
     h.add(":path", u.path);
     h.add(":scheme", u.scheme);
     h.add(":authority", h2_authority(u));
+    let i = 0;
+    let n = extra.count();
+    while i < n {
+        h.add(extra.name_at(i), extra.value_at(i));
+        i = i + 1;
+    }
     return h;
+}
+
+fn h2_get_request_headers(Url u) -> Headers {
+    return h2_request_headers(u, "GET", Headers::new());
 }
 
 /// Connection preface + empty SETTINGS + GET HEADERS (END_HEADERS|END_STREAM) on stream 1.
@@ -701,176 +778,6 @@ fn h2_try_read_frame(Stream s) -> Result<Option<H2Frame>, HttpError> {
     return Option::Some(f);
 }
 
-fn h2_client_on_settings(Stream s, H2Frame f, HpackTable table) -> Result<(), HttpError> {
-    if f.flags % 2 == 0 {
-        let st = decode_settings_payload(f.payload)?;
-        apply_settings_to_table(table, st);
-        h2_write_frame(s, settings_ack_frame())?;
-    }
-    return ();
-}
-
-/// HTTP/2 GET on a connected stream (cleartext prior-knowledge or TLS ALPN `h2`).
-/// One decoder table for every HEADERS / PUSH_PROMISE / CONTINUATION on this connection.
-fn h2_get_over_h2(Stream s, Url u) -> Result<Response, HttpError> {
-    match write_all(s, h2_prior_knowledge_get(u)) {
-        Result::Ok(_) => 0,
-        Result::Err(_) => {
-            h2_close(s);
-            http_fail_unit()?;
-            0
-        },
-    };
-    let table = HpackTable::new(4096);
-    let status = 200;
-    let got_headers = 0;
-    let body: Vec<byte> = Vec::new();
-    let done = 0;
-    let guard = 0;
-    let collecting = 0;
-    let col_kind = 0;
-    let col_sid = 0;
-    let col_end_stream = 0;
-    let hbuf: Vec<byte> = Vec::new();
-    while done == 0 {
-        if guard >= 128 {
-            h2_close(s);
-            http_err_bad_response()?;
-        }
-        let f = match h2_read_frame(s) {
-            Result::Ok(v) => v,
-            Result::Err(e) => {
-                h2_close(s);
-                raise e;
-            },
-        };
-        if f.typ == frame_type_settings() {
-            match h2_client_on_settings(s, f, table) {
-                Result::Ok(_) => 0,
-                Result::Err(e) => {
-                    h2_close(s);
-                    raise e;
-                },
-            };
-        }
-        if collecting == 1 {
-            if f.typ != frame_type_continuation() {
-                h2_close(s);
-                http_err_bad_response()?;
-            }
-            if f.stream_id != col_sid {
-                h2_close(s);
-                http_err_bad_response()?;
-            }
-            h2_append(hbuf, f.payload);
-            if h2_end_headers_set(f.flags) == 1 {
-                let h = match decode_header_block_with(hbuf, table) {
-                    Result::Ok(v) => v,
-                    Result::Err(e) => {
-                        h2_close(s);
-                        raise e;
-                    },
-                };
-                if col_kind == 1 {
-                    if col_sid == 1 {
-                        status = h2_status_from_headers(h);
-                        got_headers = 1;
-                        if col_end_stream == 1 {
-                            done = 1;
-                        }
-                    }
-                }
-                collecting = 0;
-                let empty: Vec<byte> = Vec::new();
-                hbuf = empty;
-            }
-        } else {
-            if f.typ == frame_type_headers() {
-                if f.stream_id == 1 {
-                    col_end_stream = f.flags % 2;
-                    if h2_end_headers_set(f.flags) == 1 {
-                        let h = match headers_from_frame_with(f, table) {
-                            Result::Ok(v) => v,
-                            Result::Err(e) => {
-                                h2_close(s);
-                                raise e;
-                            },
-                        };
-                        status = h2_status_from_headers(h);
-                        got_headers = 1;
-                        if col_end_stream == 1 {
-                            done = 1;
-                        }
-                    } else {
-                        collecting = 1;
-                        col_kind = 1;
-                        col_sid = f.stream_id;
-                        hbuf = bytes_slice_resp(f.payload, 0, len(f.payload));
-                    }
-                }
-            }
-            if f.typ == frame_type_push_promise() {
-                let p = match decode_push_promise_payload(f.payload) {
-                    Result::Ok(v) => v,
-                    Result::Err(e) => {
-                        h2_close(s);
-                        raise e;
-                    },
-                };
-                if h2_end_headers_set(f.flags) == 1 {
-                    match decode_header_block_with(p.block, table) {
-                        Result::Ok(_) => 0,
-                        Result::Err(e) => {
-                            h2_close(s);
-                            raise e;
-                        },
-                    };
-                } else {
-                    collecting = 1;
-                    col_kind = 2;
-                    col_sid = f.stream_id;
-                    col_end_stream = 0;
-                    hbuf = bytes_slice_resp(p.block, 0, len(p.block));
-                }
-            }
-            if f.typ == frame_type_data() {
-                if f.stream_id == 1 {
-                    h2_append(body, f.payload);
-                    if f.flags % 2 == 1 {
-                        done = 1;
-                    }
-                }
-            }
-            if f.typ == frame_type_continuation() {
-                h2_close(s);
-                http_err_bad_response()?;
-            }
-        }
-        guard = guard + 1;
-    }
-    h2_close(s);
-    if got_headers == 0 {
-        http_err_bad_response()?;
-    }
-    let r = Response::ok();
-    r.status(status);
-    r.body(body);
-    return r;
-}
-
-/// Two responses from one multiplexed GET pair (streams 1 and 3).
-class H2Pair {
-    pub first: Response,
-    pub second: Response,
-}
-
-impl H2Pair {
-    pub static fn new(Response first, Response second) -> H2Pair {
-        return new H2Pair(first, second);
-    }
-}
-
-/// Preface + SETTINGS + GET HEADERS on stream 1 and stream 3.
 fn h2_prior_knowledge_two_gets(Url a, Url b) -> Vec<byte> {
     let out = connection_preface();
     h2_append(out, encode_frame(empty_settings_frame()));
@@ -879,213 +786,16 @@ fn h2_prior_knowledge_two_gets(Url a, Url b) -> Vec<byte> {
     return out;
 }
 
-fn h2_pair_ok(int status, Vec<byte> body) -> Response {
-    let r = Response::ok();
-    r.status(status);
-    r.body(body);
-    return r;
-}
-
-/// Two concurrent GETs on streams 1 and 3. Both must complete with HEADERS.
-fn h2_get_two_over_h2(Stream s, Url a, Url b) -> Result<H2Pair, HttpError> {
-    match write_all(s, h2_prior_knowledge_two_gets(a, b)) {
-        Result::Ok(_) => 0,
-        Result::Err(_) => {
-            h2_close(s);
-            http_fail_unit()?;
-            0
-        },
-    };
-    let table = HpackTable::new(4096);
-    let status1 = 200;
-    let status3 = 200;
-    let got1 = 0;
-    let got3 = 0;
-    let body1: Vec<byte> = Vec::new();
-    let body3: Vec<byte> = Vec::new();
-    let done1 = 0;
-    let done3 = 0;
-    let guard = 0;
-    let collecting = 0;
-    let col_kind = 0;
-    let col_sid = 0;
-    let col_end_stream = 0;
-    let hbuf: Vec<byte> = Vec::new();
-    let finished = 0;
-    while finished == 0 {
-        if guard >= 128 {
-            h2_close(s);
-            http_err_bad_response()?;
-        }
-        let f = match h2_read_frame(s) {
-            Result::Ok(v) => v,
-            Result::Err(e) => {
-                h2_close(s);
-                raise e;
-            },
-        };
-        if f.typ == frame_type_settings() {
-            match h2_client_on_settings(s, f, table) {
-                Result::Ok(_) => 0,
-                Result::Err(e) => {
-                    h2_close(s);
-                    raise e;
-                },
-            };
-        }
-        if collecting == 1 {
-            if f.typ != frame_type_continuation() {
-                h2_close(s);
-                http_err_bad_response()?;
-            }
-            if f.stream_id != col_sid {
-                h2_close(s);
-                http_err_bad_response()?;
-            }
-            h2_append(hbuf, f.payload);
-            if h2_end_headers_set(f.flags) == 1 {
-                let h = match decode_header_block_with(hbuf, table) {
-                    Result::Ok(v) => v,
-                    Result::Err(e) => {
-                        h2_close(s);
-                        raise e;
-                    },
-                };
-                if col_kind == 1 {
-                    if col_sid == 1 {
-                        status1 = h2_status_from_headers(h);
-                        got1 = 1;
-                        if col_end_stream == 1 {
-                            done1 = 1;
-                        }
-                    }
-                    if col_sid == 3 {
-                        status3 = h2_status_from_headers(h);
-                        got3 = 1;
-                        if col_end_stream == 1 {
-                            done3 = 1;
-                        }
-                    }
-                }
-                collecting = 0;
-                let empty: Vec<byte> = Vec::new();
-                hbuf = empty;
-            }
-        } else {
-            if f.typ == frame_type_headers() {
-                let es = f.flags % 2;
-                if h2_end_headers_set(f.flags) == 1 {
-                    let h = match headers_from_frame_with(f, table) {
-                        Result::Ok(v) => v,
-                        Result::Err(e) => {
-                            h2_close(s);
-                            raise e;
-                        },
-                    };
-                    if f.stream_id == 1 {
-                        status1 = h2_status_from_headers(h);
-                        got1 = 1;
-                        if es == 1 {
-                            done1 = 1;
-                        }
-                    }
-                    if f.stream_id == 3 {
-                        status3 = h2_status_from_headers(h);
-                        got3 = 1;
-                        if es == 1 {
-                            done3 = 1;
-                        }
-                    }
-                } else {
-                    collecting = 1;
-                    col_kind = 1;
-                    col_sid = f.stream_id;
-                    col_end_stream = es;
-                    hbuf = bytes_slice_resp(f.payload, 0, len(f.payload));
-                }
-            }
-            if f.typ == frame_type_push_promise() {
-                let p = match decode_push_promise_payload(f.payload) {
-                    Result::Ok(v) => v,
-                    Result::Err(e) => {
-                        h2_close(s);
-                        raise e;
-                    },
-                };
-                if h2_end_headers_set(f.flags) == 1 {
-                    match decode_header_block_with(p.block, table) {
-                        Result::Ok(_) => 0,
-                        Result::Err(e) => {
-                            h2_close(s);
-                            raise e;
-                        },
-                    };
-                } else {
-                    collecting = 1;
-                    col_kind = 2;
-                    col_sid = f.stream_id;
-                    col_end_stream = 0;
-                    hbuf = bytes_slice_resp(p.block, 0, len(p.block));
-                }
-            }
-            if f.typ == frame_type_data() {
-                if f.stream_id == 1 {
-                    h2_append(body1, f.payload);
-                    if f.flags % 2 == 1 {
-                        done1 = 1;
-                    }
-                }
-                if f.stream_id == 3 {
-                    h2_append(body3, f.payload);
-                    if f.flags % 2 == 1 {
-                        done3 = 1;
-                    }
-                }
-            }
-            if f.typ == frame_type_continuation() {
-                h2_close(s);
-                http_err_bad_response()?;
-            }
-        }
-        guard = guard + 1;
-        if done1 == 1 {
-            if done3 == 1 {
-                finished = 1;
-            }
-        }
-    }
-    h2_close(s);
-    if got1 == 0 {
-        http_err_bad_response()?;
-    }
-    if got3 == 0 {
-        http_err_bad_response()?;
-    }
-    return H2Pair::new(h2_pair_ok(status1, body1), h2_pair_ok(status3, body3));
-}
-
-/// Two cleartext prior-knowledge GETs on one connection (streams 1 and 3).
-fn h2_connect_two(string url_a, string url_b) -> Result<H2Pair, HttpError> {
-    let a = parse_url(url_a)?;
-    let b = parse_url(url_b)?;
-    let tcp = match tcp_connect(a.host, a.port) {
-        Result::Ok(v) => v,
-        Result::Err(_) => http_fail_stream()?,
-    };
-    return h2_get_two_over_h2(tcp, a, b)?;
-}
-
-/// HTTP/1.1 GET on an already-handshaken TLS (or TCP) stream.
-fn h2_http11_get(Stream s, Url u) -> Result<Response, HttpError> {
-    let headers = empty_headers();
-    let head = match build_request_head("GET", u, headers, 0) {
+fn h2_http11_exchange(Stream s, string method, Url u, Headers headers, Vec<byte> body) -> Result<Response, HttpError> {
+    let head = match build_request_head(method, u, headers, len(body)) {
         Result::Ok(v) => v,
         Result::Err(e) => {
             h2_close(s);
             raise e;
         },
     };
-    match write_all(s, head) {
+    let msg = h2_cat(head, body);
+    match write_all(s, msg) {
         Result::Ok(_) => 0,
         Result::Err(_) => {
             h2_close(s);
@@ -1117,9 +827,9 @@ fn h2_client_alpn() -> string {
     return "h2,http/1.1";
 }
 
-/// Server ALPN offer for TLS `h2_serve` / TLS `h2_serve_once` (h2 only).
+/// Server ALPN offer: HTTP/2 when selected, otherwise HTTP/1.1 on the same listener.
 fn h2_server_alpn() -> string {
-    return "h2";
+    return "h2,http/1.1";
 }
 
 /// Exact ALPN `h2` means speak HTTP/2; anything else (incl. empty) falls back to HTTP/1.1.
@@ -1128,57 +838,4 @@ fn h2_alpn_is_h2(string proto) -> int {
         return 1;
     }
     return 0;
-}
-
-fn h2_tls_enable(Stream tcp, string host, bool verify, string ca_pem) -> Result<Stream, HttpError> {
-    let ca = Option::None;
-    if ca_pem != "" {
-        ca = Option::Some(ca_pem);
-    }
-    let s = match tls_enable(tcp, host, new ClientOpts(verify, ca, Option::None, 5000, h2_client_alpn())) {
-        Result::Ok(v) => v,
-        Result::Err(_) => {
-            h2_close(tcp);
-            http_fail_stream()?
-        },
-    };
-    return s;
-}
-
-/// HTTPS GET after TLS enable with optional CA PEM (`""` → system roots / default verify).
-fn h2_connect_tls(string url, bool verify, string ca_pem) -> Result<Response, HttpError> {
-    let u = parse_url(url)?;
-    if u.scheme != "https" {
-        http_err_bad_url()?;
-    }
-    let tcp = match tcp_connect(u.host, u.port) {
-        Result::Ok(v) => v,
-        Result::Err(_) => http_fail_stream()?,
-    };
-    let s = h2_tls_enable(tcp, u.host, verify, ca_pem)?;
-    let proto = match alpn_protocol(s) {
-        Result::Ok(p) => p,
-        Result::Err(_) => {
-            h2_close(s);
-            http_err_io()?;
-            ""
-        },
-    };
-    if h2_alpn_is_h2(proto) == 1 {
-        return h2_get_over_h2(s, u)?;
-    }
-    return h2_http11_get(s, u)?;
-}
-
-/// GET: cleartext prior-knowledge, or HTTPS TLS ALPN `h2` with HTTP/1.1 fallback.
-fn h2_connect(string url) -> Result<Response, HttpError> {
-    let u = parse_url(url)?;
-    if u.scheme == "https" {
-        return h2_connect_tls(url, true, "")?;
-    }
-    let tcp = match tcp_connect(u.host, u.port) {
-        Result::Ok(v) => v,
-        Result::Err(_) => http_fail_stream()?,
-    };
-    return h2_get_over_h2(tcp, u)?;
 }
