@@ -34,8 +34,9 @@ fn main() {
 | `serve_once(handler)` | Accept one connection, one request |
 | `serve_one_client(handler)` | Accept one connection, keep-alive until close |
 | `serve(handler)` | Accept loop |
-| `h2_serve_once` | One connection, HTTP/2 prior-knowledge (every ended stream gets `ok`); TLS+ALPN `h2` when `Server.tls` is set |
-| `h2_serve` | Same as `h2_serve_once`, requires `Server.tls` |
+| `h2_serve_once(handler)` | One connection. Cleartext is HTTP/2 prior knowledge. With `Server.tls`, ALPN `h2` is HTTP/2 and any other selection is HTTP/1.1 through the same handler |
+| `h2_serve(handler)` | Accept loop; requires `Server.tls`. ALPN `h2` is HTTP/2; otherwise HTTP/1.1 |
+| `h2_serve_all(handler)` | Accept loop for cleartext prior knowledge, or TLS with the same ALPN split as `h2_serve` |
 | `ws_serve_once` (`http::ws`) | Accept one connection and complete a WebSocket upgrade |
 
 `Server::drop` closes the listener if still bound. That runs at GC time; unbind deterministically by dropping after `serve` returns, or process exit.
