@@ -9,12 +9,14 @@ use http::url::{
     http_err_bad_response,
 };
 
-/// Parsed HTTP response (status, headers, body).
+/// Parsed HTTP response (status, headers, body, optional trailing fields).
 class Response {
     pub status: int,
     pub header_names: Vec<string>,
     pub header_values: Vec<string>,
     pub body: Vec<byte>,
+    pub trailer_names: Vec<string>,
+    pub trailer_values: Vec<string>,
 }
 
 impl Response {
@@ -23,7 +25,9 @@ impl Response {
         let names: Vec<string> = Vec::new();
         let values: Vec<string> = Vec::new();
         let body: Vec<byte> = Vec::new();
-        return new Response(200, names, values, body);
+        let trailer_names: Vec<string> = Vec::new();
+        let trailer_values: Vec<string> = Vec::new();
+        return new Response(200, names, values, body, trailer_names, trailer_values);
     }
 
     pub fn status(int code) {
@@ -38,10 +42,18 @@ impl Response {
     pub fn body(Vec<byte> b) {
         self.body = b;
     }
+
+    /// Trailing header field, carried after the body on HTTP/2.
+    pub fn trailer(string name, string value) {
+        self.trailer_names.push(name);
+        self.trailer_values.push(value);
+    }
 }
 
 fn make_response(int status, Vec<string> names, Vec<string> values, Vec<byte> body) -> Response {
-    return new Response(status, names, values, body);
+    let trailer_names: Vec<string> = Vec::new();
+    let trailer_values: Vec<string> = Vec::new();
+    return new Response(status, names, values, body, trailer_names, trailer_values);
 }
 
 fn response_status(Response r) -> Result<int, HttpError> {
@@ -66,6 +78,18 @@ fn header_get(Response r, string name) -> string {
     while i < n {
         if r.header_names[i] == name {
             return r.header_values[i];
+        }
+        i = i + 1;
+    }
+    return "";
+}
+
+fn trailer_get(Response r, string name) -> string {
+    let i = 0;
+    let n = len(r.trailer_names);
+    while i < n {
+        if r.trailer_names[i] == name {
+            return r.trailer_values[i];
         }
         i = i + 1;
     }
