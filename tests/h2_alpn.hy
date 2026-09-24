@@ -2,6 +2,7 @@
 use string::{to_bytes};
 use http::url::{Url, empty_headers, find_bytes, parse_url};
 use http::request::{build_request_head};
+use http::h2_session::{h2_connect};
 use http::h2::{
     connection_preface,
     decode_frame,
@@ -9,7 +10,6 @@ use http::h2::{
     frame_type_settings,
     h2_alpn_is_h2,
     h2_client_alpn,
-    h2_connect,
     h2_get_request_headers,
     h2_prior_knowledge_get,
     h2_server_alpn,
@@ -38,8 +38,8 @@ test("client alpn offer prefers h2 then http11") {
     assert(h2_client_alpn() == "h2,http/1.1", "offer list")?;
 }
 
-test("server alpn offer is h2 only") {
-    assert(h2_server_alpn() == "h2", "server offer")?;
+test("server alpn offer is h2 and http11") {
+    assert(h2_server_alpn() == "h2,http/1.1", "server offer")?;
 }
 
 test("alpn is h2 only for exact h2 token") {

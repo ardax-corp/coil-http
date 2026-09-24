@@ -17,9 +17,9 @@ use http::h2::{
     frame_type_window_update,
     frame_type_continuation,
     frame_wire_len,
-    h2_connect,
     preface_ok,
 };
+use http::h2_session::{h2_connect};
 
 test("settings frame roundtrip") {
     let f = empty_settings_frame();

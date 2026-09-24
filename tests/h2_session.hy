@@ -345,18 +345,37 @@ test("headers on even stream id is an error") {
     }, "even headers")?;
 }
 
-test("duplicate headers on same stream is an error") {
+test("second headers with end stream are trailers") {
     let sess = boot_session();
     let h = get_slash_headers();
     match sess.feed(encode_frame(headers_frame(1, h, 0))) {
         Result::Ok(_) => 0,
         Result::Err(_) => panic "first headers",
     };
-    let r = sess.feed(encode_frame(headers_frame(1, h, 1)));
+    let t = Headers::new();
+    t.add("x-trail", "yes");
+    match sess.feed(encode_frame(headers_frame(1, t, 1))) {
+        Result::Ok(_) => 0,
+        Result::Err(_) => panic "trailers",
+    };
+    let tr = match sess.stream_trailers(1) {
+        Result::Ok(v) => v,
+        Result::Err(_) => panic "trailer headers",
+    };
+    assert(tr.count() == 1, "one trailer")?;
+    assert(tr.value_at(0) == "yes", "yes")?;
+    let ended = match sess.stream_ended(1) {
+        Result::Ok(v) => v,
+        Result::Err(_) => panic "ended",
+    };
+    assert(ended == 1, "ended")?;
+    let again = Headers::new();
+    again.add("x-trail", "no");
+    let r = sess.feed(encode_frame(headers_frame(1, again, 0)));
     assert(match r {
         Result::Ok(_) => false,
         Result::Err(_) => true,
-    }, "duplicate headers")?;
+    }, "headers after end")?;
 }
 
 test("data without headers is an error") {
@@ -656,21 +675,23 @@ test("DATA between HEADERS and CONTINUATION is an error") {
     }, "data during continuation")?;
 }
 
-test("SETTINGS_HEADER_TABLE_SIZE resizes the session table") {
+test("SETTINGS_HEADER_TABLE_SIZE resizes the encoder only") {
     let sess = boot_session();
-    assert(sess.hpack.cap == 4096, "default cap")?;
-    assert(sess.hpack.max_size == 4096, "default max")?;
+    assert(sess.hpack.cap == 4096, "decoder cap")?;
+    assert(sess.encoder.cap == 4096, "encoder cap")?;
     let st = H2Settings::new();
     st.add(settings_id_header_table_size(), 256);
     match sess.feed(encode_frame(settings_frame(st))) {
         Result::Ok(_) => 0,
         Result::Err(_) => panic "settings",
     };
-    assert(sess.hpack.cap == 256, "cap")?;
-    assert(sess.hpack.max_size == 256, "max")?;
+    assert(sess.encoder.cap == 256, "encoder cap")?;
+    assert(sess.encoder.max_size == 256, "encoder max")?;
+    assert(sess.hpack.cap == 4096, "decoder unchanged")?;
+    assert(sess.hpack.max_size == 4096, "decoder max")?;
 }
 
-test("SETTINGS_HEADER_TABLE_SIZE zero evicts dynamic entries") {
+test("SETTINGS_HEADER_TABLE_SIZE zero keeps the decoder") {
     let sess = boot_session();
     let first = hpack_octets(
         130, 134, 132, 65, 15, 119, 119, 119, 46, 101, 120, 97, 109, 112, 108, 101, 46, 99, 111, 109
@@ -685,14 +706,20 @@ test("SETTINGS_HEADER_TABLE_SIZE zero evicts dynamic entries") {
         Result::Ok(_) => 0,
         Result::Err(_) => panic "resize 0",
     };
-    assert(sess.hpack.max_size == 0, "max 0")?;
-    assert(sess.hpack.size == 0, "empty")?;
+    assert(sess.encoder.max_size == 0, "encoder max 0")?;
+    assert(sess.encoder.size == 0, "encoder empty")?;
+    assert(sess.hpack.max_size == 4096, "decoder max")?;
+    assert(sess.hpack.size > 0, "decoder kept")?;
     let second = hpack_octets(130, 134, 132, 190, 88, 8, 110, 111, 45, 99, 97, 99, 104, 101);
-    let r = sess.feed(encode_frame(raw_headers(3, second)));
-    assert(match r {
-        Result::Ok(_) => false,
-        Result::Err(_) => true,
-    }, "idx 62 gone")?;
+    match sess.feed(encode_frame(raw_headers(3, second))) {
+        Result::Ok(_) => 0,
+        Result::Err(_) => panic "C.3.2 still decodes",
+    };
+    let h3 = match sess.stream_headers(3) {
+        Result::Ok(v) => v,
+        Result::Err(_) => panic "h3",
+    };
+    assert(h3.value_at(3) == "www.example.com", "host from decoder table")?;
 }
 
 test("PUSH_PROMISE parse stores promised request") {
