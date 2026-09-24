@@ -104,3 +104,23 @@ jobs:
       - name: WebSocket echo loopback
         working-directory: coil-http
         run: ../coil-lang/target/debug/coil examples/ws_loopback.hy | grep -q ok
+
+      - name: Cross-process EAGAIN HTTP/1 GET
+        working-directory: coil-http
+        run: |
+          set -euo pipefail
+          python3 scripts/delay_http_server.py h1 18765 &
+          spid=$!
+          trap 'kill $spid 2>/dev/null || true' EXIT
+          sleep 0.2
+          ../coil-lang/target/debug/coil examples/eagain_h1.hy | grep -q ok
+
+      - name: Cross-process EAGAIN HTTP/2 GET
+        working-directory: coil-http
+        run: |
+          set -euo pipefail
+          python3 scripts/delay_http_server.py h2 18766 &
+          spid=$!
+          trap 'kill $spid 2>/dev/null || true' EXIT
+          sleep 0.2
+          ../coil-lang/target/debug/coil examples/eagain_h2.hy | grep -q ok
