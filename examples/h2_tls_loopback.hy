@@ -10,9 +10,23 @@ use io::sync::{accept_wait, write_all};
 use tls::client::{enable as tls_client_enable, ClientOpts};
 use tls::server::{enable as tls_server_enable, ServerOpts};
 use tls::alpn_protocol;
-use http::h2::{h2_get_over_h2};
-use http::server::{h2_serve_conn};
+use http::h1::IncomingRequest;
+use http::response::Response;
+use http::h2_session::{h2_get_over_h2};
+use http::server::{HttpHandler, h2_serve_conn};
 use http::url::{parse_url};
+
+class TlsHandler {}
+
+impl HttpHandler<TlsHandler> {
+    fn handle(TlsHandler self, IncomingRequest req) -> Response {
+        let _m = req.method_val();
+        let r = Response::ok();
+        r.status(201);
+        r.body(to_bytes("from-handler"));
+        return r;
+    }
+}
 
 fn cert_pem() -> string {
     return "-----BEGIN CERTIFICATE-----\nMIIDTTCCAjWgAwIBAgIULZZHw6Gv1CG49dSJ/JsIWAC09uYwDQYJKoZIhvcNAQEL\nBQAwGzEZMBcGA1UEAwwQY29pbC10bHMtdGVzdC1jYTAeFw0yNjA4MjUxMjM2MTda\nFw0zNjA4MjIxMjM2MTdaMBQxEjAQBgNVBAMMCWxvY2FsaG9zdDCCASIwDQYJKoZI\nhvcNAQEBBQADggEPADCCAQoCggEBAKsFaAp1MrBsZ5AenNOJOrHdzVDnV1o2V42O\naTUbNRmzRF/IYXceRj5kGZQShs6kAaYzXRPog2hd2MZc60MjNqNBEfe3eZ12+E6J\nf/Rz44zbFXj2CO7bqf3NQhbKa+1oxpzx/GV2+4M5Z2FgOVRfxKYgoXDzn99NxBzK\nAr7E7Ggd3snXwBu6k/lvxf9wUbkj9FZyJTrSkMSoz5rfNzBBNFbAQT/TamJGmht9\ni/+wk2JwbxfH1cjrJamS+sN7DFPgELVsNJwr0BlkPNnrxiQEqJ7mj2Kj9hcfjIVx\nWUj/xenVHrBQ4FpvyX7WybT9M2BrkGWfOw+20qSuhIeCSqa4swcCAwEAAaOBjzCB\njDAJBgNVHRMEAjAAMA4GA1UdDwEB/wQEAwIFoDATBgNVHSUEDDAKBggrBgEFBQcD\nATAaBgNVHREEEzARgglsb2NhbGhvc3SHBH8AAAEwHQYDVR0OBBYEFH+Z4z5GgmrD\nGrruwTh5IpG4tBc+MB8GA1UdIwQYMBaAFAFFn3ZWMg3CtulzlnYkJs2ecKb+MA0G\nCSqGSIb3DQEBCwUAA4IBAQC97MSOUVZbYlUrwLun5ZQCJKkjIhHDezMmJJWFFg/t\nnWdYtOloWHmY0tOsa6tAvF+0zYc4YZdkpeSnbqH+Mk41znf+A/Js0i3JKK2hJ1Eu\nBQG64LjCnZwVKqLxrvxlzbKNIIEUwf0CktTCok7wlhYWYZK9b9+4soAPgF2KoIX3\nj6TnG3xBFF06rzybsbSaHKVn7flUaTxj+05NtLBbMdzqle3xQX3Dz34klFTQdkTl\nlGz1K09Rl6uVKsU1SgNsm5cxAOtW8HGDinTTPPCuoOBhXWUCWS9U9zsk20VQPH7q\nq5up6N6FnhYpQ5eBDWSeJryILFZkK8/tASxKgeyHHaBh\n-----END CERTIFICATE-----\n";
@@ -61,7 +75,7 @@ fn server_thread(Sender tx) {
         Result::Ok(v) => v,
         Result::Err(e) => panic "server enable " + io_err_tag(e),
     };
-    match h2_serve_conn(s) {
+    match h2_serve_conn(s, new TlsHandler()) {
         Result::Ok(_) => 0,
         Result::Err(_) => 0,
     };
@@ -102,13 +116,9 @@ fn main() {
     };
     match h2_get_over_h2(s, u) {
         Result::Ok(r) => {
-            if r.status == 200 {
-                if len(r.body) == 2 {
-                    if r.body[0] == ("o" as byte) {
-                        if r.body[1] == ("k" as byte) {
-                            write_all(stdout(), to_bytes("ok"));
-                        }
-                    }
+            if r.status == 201 {
+                if len(r.body) == 12 {
+                    write_all(stdout(), to_bytes("alpn=h2\nstatus=201\nbody=from-handler\n"));
                 }
             }
         },

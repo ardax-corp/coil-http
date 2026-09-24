@@ -4,8 +4,22 @@ use conv::{int_to_dec};
 use string::{to_bytes};
 use io::{stdout};
 use io::sync::{write_all};
-use http::h2::{h2_connect_two};
-use http::server::{Server, h2_serve_once};
+use http::h1::IncomingRequest;
+use http::response::Response;
+use http::h2_session::{h2_connect_two};
+use http::server::{HttpHandler, Server, h2_serve_once};
+
+class OkHandler {}
+
+impl HttpHandler<OkHandler> {
+    fn handle(OkHandler self, IncomingRequest req) -> Response {
+        let _m = req.method_val();
+        let r = Response::ok();
+        r.status(200);
+        r.body(to_bytes("ok"));
+        return r;
+    }
+}
 
 fn server_thread(Sender tx) {
     let srv = Server::new();
@@ -21,7 +35,7 @@ fn server_thread(Sender tx) {
         Result::Ok(_) => 0,
         Result::Err(_) => panic "send port",
     };
-    match h2_serve_once(srv) {
+    match h2_serve_once(srv, new OkHandler()) {
         Result::Ok(_) => 0,
         Result::Err(_) => 0,
     };
