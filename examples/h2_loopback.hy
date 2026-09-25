@@ -12,7 +12,7 @@ use http::server::{HttpHandler, Server, h2_serve_once};
 
 class DemoHandler {}
 
-impl HttpHandler<DemoHandler> {
+impl HttpHandler for DemoHandler {
     fn handle(DemoHandler self, IncomingRequest req) -> Response {
         let _path = req.path_val();
         let r = Response::ok();

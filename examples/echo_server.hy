@@ -6,7 +6,7 @@ use string::{to_bytes};
 
 class EchoHandler {}
 
-impl HttpHandler<EchoHandler> {
+impl HttpHandler for EchoHandler {
     fn handle(EchoHandler self, IncomingRequest req) -> Response {
         let r = Response::ok();
         r.header("Content-Type", "text/plain");

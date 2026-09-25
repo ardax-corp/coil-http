@@ -11,7 +11,7 @@ use http::response::Response;
 
 class OkHandler {}
 
-impl HttpHandler<OkHandler> {
+impl HttpHandler for OkHandler {
     fn handle(OkHandler self, IncomingRequest req) -> Response {
         let r = Response::ok();
         r.header("Content-Type", "text/plain");

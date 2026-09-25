@@ -39,10 +39,10 @@ impl WsFrame {
 
 /// Upgraded WebSocket on an HTTP/1.1 connection. `role` 1 = client (mask outbound).
 class WsConn {
-    conn: HttpConn,
-    role: int,
-    closed: int,
-    seed: int,
+    pub conn: HttpConn,
+    pub role: int,
+    pub closed: int,
+    pub seed: int,
 }
 
 impl WsConn {

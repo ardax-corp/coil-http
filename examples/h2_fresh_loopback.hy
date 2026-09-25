@@ -11,7 +11,7 @@ use http::server::{HttpHandler, Server, h2_serve_once};
 
 class OkHandler {}
 
-impl HttpHandler<OkHandler> {
+impl HttpHandler for OkHandler {
     fn handle(OkHandler self, IncomingRequest req) -> Response {
         let _m = req.method_val();
         let r = Response::ok();

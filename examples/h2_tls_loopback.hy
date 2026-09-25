@@ -9,16 +9,16 @@ use io::net::tcp::{listen, connect, local_addr};
 use io::sync::{accept_wait, write_all};
 use tls::client::{enable as tls_client_enable, ClientOpts};
 use tls::server::{enable as tls_server_enable, ServerOpts};
-use tls::alpn_protocol;
 use http::h1::IncomingRequest;
 use http::response::Response;
+use http::h2::{h2_client_alpn, h2_server_alpn};
 use http::h2_session::{h2_get_over_h2};
 use http::server::{HttpHandler, h2_serve_conn};
 use http::url::{parse_url};
 
 class TlsHandler {}
 
-impl HttpHandler<TlsHandler> {
+impl HttpHandler for TlsHandler {
     fn handle(TlsHandler self, IncomingRequest req) -> Response {
         let _m = req.method_val();
         let r = Response::ok();
@@ -71,7 +71,7 @@ fn server_thread(Sender tx) {
         Result::Ok(s) => s,
         Result::Err(_) => panic "accept",
     };
-    let s = match tls_server_enable(conn, new ServerOpts(cert_pem(), key_pem(), 5000, "", "h2")) {
+    let s = match tls_server_enable(conn, new ServerOpts(cert_pem(), key_pem(), 5000, "", h2_server_alpn())) {
         Result::Ok(v) => v,
         Result::Err(e) => panic "server enable " + io_err_tag(e),
     };
@@ -98,17 +98,10 @@ fn main() {
         Result::Ok(s) => s,
         Result::Err(_) => panic "connect",
     };
-    let s = match tls_client_enable(tcp, "localhost", new ClientOpts(false, Option::None, Option::None, 5000, "h2")) {
+    let s = match tls_client_enable(tcp, "localhost", new ClientOpts(false, Option::None, Option::None, 5000, h2_client_alpn())) {
         Result::Ok(v) => v,
         Result::Err(e) => panic "client enable " + io_err_tag(e),
     };
-    let proto = match alpn_protocol(s) {
-        Result::Ok(p) => p,
-        Result::Err(_) => panic "alpn",
-    };
-    if proto != "h2" {
-        panic "alpn not h2";
-    }
     let url = "https://127.0.0.1:" + int_to_dec(port) + "/";
     let u = match parse_url(url) {
         Result::Ok(v) => v,
@@ -116,11 +109,13 @@ fn main() {
     };
     match h2_get_over_h2(s, u) {
         Result::Ok(r) => {
-            if r.status == 201 {
-                if len(r.body) == 12 {
-                    write_all(stdout(), to_bytes("alpn=h2\nstatus=201\nbody=from-handler\nok"));
-                }
+            if r.status != 201 {
+                panic "status";
             }
+            if len(r.body) != 12 {
+                panic "body";
+            }
+            write_all(stdout(), to_bytes("status=201\nbody=from-handler\nok"));
         },
         Result::Err(_) => panic "h2_get_over_h2",
     };

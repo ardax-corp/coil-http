@@ -144,7 +144,7 @@ fn count_type(Vec<byte> wire, int typ) -> int {
 
 class AppHandler {}
 
-impl HttpHandler<AppHandler> {
+impl HttpHandler for AppHandler {
     fn handle(AppHandler self, IncomingRequest req) -> Response {
         let r = Response::ok();
         if req.method_val() == "POST" {
