@@ -9,6 +9,9 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      COIL: ../coil-lang/target/debug/coil
+      COIL_FLAGS: --root ../coil-stdlib/src --root .spool/deps/tls/src --allow-dload tls --allow-attach --ffi-search-path .spool/deps/tls/native --ffi-search-path ./native
     steps:
       - uses: actions/checkout@v4
         with:
@@ -18,11 +21,10 @@ jobs:
         with:
           repository: ardax-corp/coil-lang
           path: coil-lang
-          # Last toolchain coil-http main was developed against (2026-08-26).
-          # Current coil-lang main (COI-408/407/410) rejects Stream-as-FFI-int
-          # (coil-tls still passes Stream into invoke(Int)) and requires
-          # `impl Trait for Type`. Stay here until those land together.
-          ref: 5b3fb8b28591642a556dc30920d4f0efd24f35e7
+          # Current coil-lang main: COI-408 #457, COI-407 #458, COI-410 #460,
+          # Stream.fd #459. Pin 457 alone cannot compile this tree
+          # (`impl Trait for Type`, Stream.fd, private fields).
+          ref: 22361e69e255d3238da1d013a74e7987b5f5ad2f
 
       - uses: actions/checkout@v4
         with:
@@ -82,32 +84,52 @@ jobs:
 
       - name: Run coil-http tests
         working-directory: coil-http
-        run: ../coil-lang/target/debug/coil test
+        run: $COIL test $COIL_FLAGS
 
       - name: Loopback integration (threads; not available in test harness)
         working-directory: coil-http
-        run: ../coil-lang/target/debug/coil examples/loopback.hy | grep -q ok
+        run: $COIL $COIL_FLAGS examples/loopback.hy | grep -q ok
 
       - name: Keep-alive loopback (two GETs on one connection)
         working-directory: coil-http
-        run: ../coil-lang/target/debug/coil examples/keepalive.hy | grep -q ok
+        run: $COIL $COIL_FLAGS examples/keepalive.hy | grep -q ok
 
       - name: HTTP/2 prior-knowledge loopback
         working-directory: coil-http
-        run: ../coil-lang/target/debug/coil examples/h2_loopback.hy | grep -q ok
+        run: $COIL $COIL_FLAGS examples/h2_loopback.hy | grep -q ok
 
       - name: HTTP/2 multi-stream loopback
         working-directory: coil-http
-        run: ../coil-lang/target/debug/coil examples/h2_mux_loopback.hy | grep -q ok
+        run: $COIL $COIL_FLAGS examples/h2_mux_loopback.hy | grep -q ok
 
       - name: HTTP/2 TLS ALPN loopback
         working-directory: coil-http
-        run: ../coil-lang/target/debug/coil examples/h2_tls_loopback.hy | grep -q ok
+        run: $COIL $COIL_FLAGS examples/h2_tls_loopback.hy | grep -q ok
 
       - name: HTTP/2 client session reuse (200 GETs, one connection)
         working-directory: coil-http
-        run: ../coil-lang/target/debug/coil examples/h2_reuse_loopback.hy | grep -q ok
+        run: $COIL $COIL_FLAGS examples/h2_reuse_loopback.hy | grep -q ok
 
       - name: WebSocket echo loopback
         working-directory: coil-http
-        run: ../coil-lang/target/debug/coil examples/ws_loopback.hy | grep -q ok
+        run: $COIL $COIL_FLAGS examples/ws_loopback.hy | grep -q ok
+
+      - name: Cross-process EAGAIN HTTP/1 GET
+        working-directory: coil-http
+        run: |
+          set -euo pipefail
+          python3 scripts/delay_http_server.py h1 18765 &
+          spid=$!
+          trap 'kill $spid 2>/dev/null || true' EXIT
+          sleep 0.2
+          $COIL $COIL_FLAGS examples/eagain_h1.hy | grep -q ok
+
+      - name: Cross-process EAGAIN HTTP/2 GET
+        working-directory: coil-http
+        run: |
+          set -euo pipefail
+          python3 scripts/delay_http_server.py h2 18766 &
+          spid=$!
+          trap 'kill $spid 2>/dev/null || true' EXIT
+          sleep 0.2
+          $COIL $COIL_FLAGS examples/eagain_h2.hy | grep -q ok
