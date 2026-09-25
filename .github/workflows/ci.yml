@@ -21,10 +21,9 @@ jobs:
         with:
           repository: ardax-corp/coil-lang
           path: coil-lang
-          # Current coil-lang main: COI-408 #457, COI-407 #458, COI-410 #460,
-          # Stream.fd #459. Pin 457 alone cannot compile this tree
-          # (`impl Trait for Type`, Stream.fd, private fields).
-          ref: 22361e69e255d3238da1d013a74e7987b5f5ad2f
+          # coil-lang #464: Q2 SROA free-fn identity + dense UNARY_NOT
+          # truthiness so h2_slot_can_reuse sees key and Option<H2Session>.
+          ref: bcc66b99e51a68b4054ff805bdf9e4a47cdc87bd
 
       - uses: actions/checkout@v4
         with:
@@ -108,6 +107,7 @@ jobs:
 
       - name: HTTP/2 client session reuse (200 GETs, one connection)
         working-directory: coil-http
+        timeout-minutes: 5
         run: $COIL $COIL_FLAGS examples/h2_reuse_loopback.hy | grep -q ok
 
       - name: WebSocket echo loopback
