@@ -21,8 +21,8 @@ jobs:
         with:
           repository: ardax-corp/coil-lang
           path: coil-lang
-          # #457 park/resume + #459 Stream.fd, attach/park HostInvoke niches.
-          ref: 3b1fdcdaa34a68bc36daeee96eb260d1e397a4ad
+          # coil-lang main: COI-408 (#457), COI-407 (#458), COI-410 (#460).
+          ref: dbd8e64b7b5df12a5a965e9b0def9184b920db2f
 
       - uses: actions/checkout@v4
         with:
@@ -94,7 +94,7 @@ jobs:
 
       - name: HTTP/2 prior-knowledge loopback
         working-directory: coil-http
-        run: $COIL $COIL_FLAGS examples/h2_loopback.hy | grep -q status=201
+        run: $COIL $COIL_FLAGS examples/h2_loopback.hy | grep -q ok
 
       - name: HTTP/2 multi-stream loopback
         working-directory: coil-http
@@ -103,6 +103,10 @@ jobs:
       - name: HTTP/2 TLS ALPN loopback
         working-directory: coil-http
         run: $COIL $COIL_FLAGS examples/h2_tls_loopback.hy | grep -q alpn=h2
+
+      - name: HTTP/2 client session reuse (200 GETs, one connection)
+        working-directory: coil-http
+        run: $COIL $COIL_FLAGS examples/h2_reuse_loopback.hy | grep -q ok
 
       - name: WebSocket echo loopback
         working-directory: coil-http
