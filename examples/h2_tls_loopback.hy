@@ -118,7 +118,7 @@ fn main() {
         Result::Ok(r) => {
             if r.status == 201 {
                 if len(r.body) == 12 {
-                    write_all(stdout(), to_bytes("alpn=h2\nstatus=201\nbody=from-handler\n"));
+                    write_all(stdout(), to_bytes("alpn=h2\nstatus=201\nbody=from-handler\nok"));
                 }
             }
         },

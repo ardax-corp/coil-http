@@ -80,7 +80,7 @@ fn main() {
             if body_is(r.body, "from-handler") == 0 {
                 panic "body";
             }
-            write_all(stdout(), to_bytes("status=201\nbody=from-handler\n"));
+            write_all(stdout(), to_bytes("status=201\nbody=from-handler\nok"));
         },
         Result::Err(_) => panic "h2_connect",
     };
