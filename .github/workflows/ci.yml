@@ -19,6 +19,9 @@ jobs:
           repository: ardax-corp/coil-lang
           path: coil-lang
           # Last toolchain coil-http main was developed against (2026-08-26).
+          # Current coil-lang main (COI-408/407/410) rejects Stream-as-FFI-int
+          # (coil-tls still passes Stream into invoke(Int)) and requires
+          # `impl Trait for Type`. Stay here until those land together.
           ref: 5b3fb8b28591642a556dc30920d4f0efd24f35e7
 
       - uses: actions/checkout@v4
@@ -100,6 +103,10 @@ jobs:
       - name: HTTP/2 TLS ALPN loopback
         working-directory: coil-http
         run: ../coil-lang/target/debug/coil examples/h2_tls_loopback.hy | grep -q ok
+
+      - name: HTTP/2 client session reuse (200 GETs, one connection)
+        working-directory: coil-http
+        run: ../coil-lang/target/debug/coil examples/h2_reuse_loopback.hy | grep -q ok
 
       - name: WebSocket echo loopback
         working-directory: coil-http
