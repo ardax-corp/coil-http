@@ -2,7 +2,7 @@
 use io::{Stream, close as io_close, to_bytes};
 use io::net::tcp::{listen, local_addr};
 use tls::server::{enable as tls_server_enable, ServerOpts};
-use tls::alpn_protocol;
+use tls::{alpn_protocol};
 use io::sync::{accept_wait, write_all};
 
 use http::url::{HttpError, Headers, http_err_bad_response, http_err_not_supported, http_fail_stream, http_fail_unit};
@@ -26,12 +26,12 @@ trait HttpHandler<H> {
 }
 
 class Server {
-    host: string,
-    port: int,
-    listener: Option<Stream>,
-    tls_cert: string,
-    tls_key: string,
-    use_tls: int,
+    pub host: string,
+    pub port: int,
+    pub listener: Option<Stream>,
+    pub tls_cert: string,
+    pub tls_key: string,
+    pub use_tls: int,
 }
 
 impl Server {
