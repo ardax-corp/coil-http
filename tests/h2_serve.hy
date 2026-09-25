@@ -5,7 +5,7 @@ use http::server::{HttpHandler, Server, h2_serve};
 
 class DenyHandler {}
 
-impl HttpHandler<DenyHandler> {
+impl HttpHandler for DenyHandler {
     fn handle(DenyHandler self, IncomingRequest req) -> Response {
         let _m = req.method_val();
         return Response::ok();
