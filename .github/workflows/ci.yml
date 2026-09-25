@@ -21,8 +21,8 @@ jobs:
         with:
           repository: ardax-corp/coil-lang
           path: coil-lang
-          # #457 park/resume + #459 Stream.fd, two-word ?, IlFunc, niche Option CALL args.
-          ref: bcef5cfdbef489af1e8ebb9d364a3fd8d6f22427
+          # #457 park/resume + #459 Stream.fd, attach/park HostInvoke niches.
+          ref: 3b1fdcdaa34a68bc36daeee96eb260d1e397a4ad
 
       - uses: actions/checkout@v4
         with:
