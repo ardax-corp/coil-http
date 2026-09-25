@@ -1254,6 +1254,54 @@ impl H2Session {
         return len(self.ids);
     }
 
+    /// Drop finished streams so a long sequential session does not scan them.
+    pub fn forget_ended() {
+        let i = 0;
+        let live = 0;
+        while i < len(self.ids) {
+            if self.plen[i] > 0 {
+                return;
+            }
+            if self.reset[i] == 0 {
+                if self.ended[i] == 0 {
+                    live = 1;
+                }
+            }
+            i = i + 1;
+        }
+        if live == 1 {
+            return;
+        }
+        self.ids.clear();
+        self.ended.clear();
+        self.hnum.clear();
+        self.names.clear();
+        self.values.clear();
+        self.blob.clear();
+        self.bstart.clear();
+        self.blen.clear();
+        self.send_win.clear();
+        self.recv_win.clear();
+        self.reset.clear();
+        self.phase.clear();
+        self.pblob.clear();
+        self.pstart.clear();
+        self.plen.clear();
+        self.pend_es.clear();
+        self.tnum.clear();
+        self.tnames.clear();
+        self.tvalues.clear();
+        self.tb_on.clear();
+        self.ot_num.clear();
+        self.ot_names.clear();
+        self.ot_values.clear();
+        self.local_es.clear();
+        self.conc_held.clear();
+        self.conc_remote.clear();
+        self.local_streams = 0;
+        self.remote_streams = 0;
+    }
+
     pub fn stream_headers(int sid) -> Result<Headers, HttpError> {
         let idx = self.find_id(sid);
         if idx == 999999 {
@@ -1479,11 +1527,15 @@ fn h2_client_arm(H2Session sess) -> Result<(), HttpError> {
     return sess.queue_local_settings(st)?;
 }
 
-fn h2_exchange_on(Stream s, Url u, string method, Headers extra, Vec<byte> body) -> Result<Response, HttpError> {
-    let sess = H2Session::client();
-    h2_client_arm(sess)?;
-    sess.write_request(1, h2_request_headers(u, method, extra), body)?;
-    let wire = h2_cat_out(connection_preface(), sess.drain());
+/// One request/response on an open HTTP/2 connection. Does not close `s` on success.
+/// `preface` 1 writes the client connection preface with the first request bytes.
+fn h2_roundtrip(Stream s, H2Session sess, int sid, Url u, string method, Headers extra, Vec<byte> body, int preface) -> Result<Response, HttpError> {
+    sess.write_request(sid, h2_request_headers(u, method, extra), body)?;
+    let payload = sess.drain();
+    let wire = payload;
+    if preface == 1 {
+        wire = h2_cat_out(connection_preface(), payload);
+    }
     match h2s_write(s, wire) {
         Result::Ok(_) => 0,
         Result::Err(e) => {
@@ -1491,14 +1543,22 @@ fn h2_exchange_on(Stream s, Url u, string method, Headers extra, Vec<byte> body)
             raise e;
         },
     };
-    h2_pump(s, sess, 1, 0, 0)?;
-    let resp = match h2_response_of(sess, 1) {
+    h2_pump(s, sess, sid, 0, 0)?;
+    let resp = match h2_response_of(sess, sid) {
         Result::Ok(v) => v,
         Result::Err(e) => {
             h2_close(s);
             raise e;
         },
     };
+    sess.forget_ended();
+    return resp;
+}
+
+fn h2_exchange_on(Stream s, Url u, string method, Headers extra, Vec<byte> body) -> Result<Response, HttpError> {
+    let sess = H2Session::client();
+    h2_client_arm(sess)?;
+    let resp = h2_roundtrip(s, sess, 1, u, method, extra, body, 1)?;
     h2_close(s);
     return resp;
 }
@@ -1622,4 +1682,155 @@ fn h2_get_over_h2(Stream s, Url u) -> Result<Response, HttpError> {
     let extra = Headers::new();
     let body: Vec<byte> = Vec::new();
     return h2_exchange_on(s, u, "GET", extra, body)?;
+}
+
+fn h2_origin_key(Url u) -> string {
+    return u.scheme + "://" + u.host + ":" + int_to_dec(u.port);
+}
+
+/// One HTTP/2 connection held by `Client`. Not the HTTP/1.1 `ConnPool`.
+class H2ClientSlot {
+    pub on: int,
+    pub key: string,
+    pub next: int,
+    pub stream: Option<Stream>,
+    pub sess: Option<H2Session>,
+}
+
+fn h2_slot_empty() -> H2ClientSlot {
+    return new H2ClientSlot(0, "", 1, Option::None, Option::None);
+}
+
+fn h2_slot_close(H2ClientSlot slot) {
+    match slot.stream {
+        Option::None => 0,
+        Option::Some(s) => {
+            h2_close(s);
+            0
+        },
+    };
+    slot.on = 0;
+    slot.key = "";
+    slot.next = 1;
+    slot.stream = Option::None;
+    slot.sess = Option::None;
+}
+
+fn h2_slot_mark_dead(H2ClientSlot slot) {
+    slot.on = 0;
+    slot.key = "";
+    slot.next = 1;
+    slot.stream = Option::None;
+    slot.sess = Option::None;
+}
+
+fn h2_slot_can_reuse(H2ClientSlot slot, string key) -> int {
+    if slot.on == 0 {
+        return 0;
+    }
+    if slot.key != key {
+        return 0;
+    }
+    if slot.next < 1 {
+        return 0;
+    }
+    if slot.next % 2 == 0 {
+        return 0;
+    }
+    let sess = match slot.sess {
+        Option::None => {
+            return 0;
+        },
+        Option::Some(v) => v,
+    };
+    if sess.goaway_received() == 1 {
+        return 0;
+    }
+    return 1;
+}
+
+fn h2_slot_run_first(H2ClientSlot slot, Stream s, Url u, string key, string method, Headers extra, Vec<byte> body) -> Result<Response, HttpError> {
+    let sess = H2Session::client();
+    match h2_client_arm(sess) {
+        Result::Ok(_) => 0,
+        Result::Err(e) => {
+            h2_close(s);
+            raise e;
+        },
+    };
+    let resp = h2_roundtrip(s, sess, 1, u, method, extra, body, 1)?;
+    slot.on = 1;
+    slot.key = key;
+    slot.next = 3;
+    slot.stream = Option::Some(s);
+    slot.sess = Option::Some(sess);
+    return resp;
+}
+
+fn h2_slot_dial(H2ClientSlot slot, Url u, string key, string method, Headers extra, Vec<byte> body) -> Result<Response, HttpError> {
+    if u.scheme == "https" {
+        let tcp = match tcp_connect(u.host, u.port) {
+            Result::Ok(v) => v,
+            Result::Err(_) => http_fail_stream()?,
+        };
+        let s = h2_tls_enable(tcp, u.host, true, "")?;
+        let proto = match alpn_protocol(s) {
+            Result::Ok(p) => p,
+            Result::Err(_) => {
+                h2_close(s);
+                http_err_io()?;
+                ""
+            },
+        };
+        if h2_alpn_is_h2(proto) == 0 {
+            return h2_http11_exchange(s, method, u, extra, body)?;
+        }
+        return h2_slot_run_first(slot, s, u, key, method, extra, body)?;
+    }
+    if u.scheme != "http" {
+        http_err_bad_url()?;
+    }
+    let tcp = match tcp_connect(u.host, u.port) {
+        Result::Ok(v) => v,
+        Result::Err(_) => http_fail_stream()?,
+    };
+    return h2_slot_run_first(slot, tcp, u, key, method, extra, body)?;
+}
+
+/// Request on this slot. Reuses the live connection for the same origin.
+fn h2_slot_exchange(H2ClientSlot slot, string url, string method, Headers extra, Vec<byte> body) -> Result<Response, HttpError> {
+    let u = parse_url(url)?;
+    let key = h2_origin_key(u);
+    if h2_slot_can_reuse(slot, key) == 1 {
+        let sid = slot.next;
+        let s = match slot.stream {
+            Option::None => http_fail_stream()?,
+            Option::Some(v) => v,
+        };
+        let sess = match slot.sess {
+            Option::None => {
+                http_err_bad_response()?;
+                H2Session::client()
+            },
+            Option::Some(v) => v,
+        };
+        match h2_roundtrip(s, sess, sid, u, method, extra, body, 0) {
+            Result::Ok(r) => {
+                slot.next = sid + 2;
+                if sess.goaway_received() == 1 {
+                    h2_slot_close(slot);
+                }
+                return r;
+            },
+            Result::Err(_) => {
+                h2_slot_mark_dead(slot);
+                0
+            },
+        };
+    } else {
+        if slot.on == 1 {
+            h2_slot_close(slot);
+        }
+    }
+    return h2_slot_dial(slot, u, key, method, extra, body)?;
 }
