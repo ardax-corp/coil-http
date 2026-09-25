@@ -9,7 +9,7 @@ use io::net::tcp::{listen, connect, local_addr};
 use io::sync::{accept_wait, write_all};
 use tls::client::{enable as tls_client_enable, ClientOpts};
 use tls::server::{enable as tls_server_enable, ServerOpts};
-use tls::alpn_protocol;
+use tls::{alpn_protocol};
 use http::h1::IncomingRequest;
 use http::response::Response;
 use http::h2_session::{h2_get_over_h2};
@@ -18,7 +18,7 @@ use http::url::{parse_url};
 
 class TlsHandler {}
 
-impl HttpHandler<TlsHandler> {
+impl HttpHandler for TlsHandler {
     fn handle(TlsHandler self, IncomingRequest req) -> Response {
         let _m = req.method_val();
         let r = Response::ok();
