@@ -94,7 +94,7 @@ jobs:
 
       - name: HTTP/2 prior-knowledge loopback
         working-directory: coil-http
-        run: $COIL $COIL_FLAGS examples/h2_loopback.hy | grep -q ok
+        run: $COIL $COIL_FLAGS examples/h2_loopback.hy | grep -q status=201
 
       - name: HTTP/2 multi-stream loopback
         working-directory: coil-http
@@ -102,7 +102,7 @@ jobs:
 
       - name: HTTP/2 TLS ALPN loopback
         working-directory: coil-http
-        run: $COIL $COIL_FLAGS examples/h2_tls_loopback.hy | grep -q ok
+        run: $COIL $COIL_FLAGS examples/h2_tls_loopback.hy | grep -q alpn=h2
 
       - name: WebSocket echo loopback
         working-directory: coil-http
