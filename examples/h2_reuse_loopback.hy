@@ -1,24 +1,23 @@
-// Cleartext HTTP/2 prior-knowledge loopback.
-// The server dispatches each stream to a handler; the client prints that status and body.
+// 200 sequential Client::h2_get calls on one HTTP/2 connection.
+// The server accepts once (`h2_serve_once`); a new TCP connect per GET would fail.
 use thread::{Sender, channel, join, recv, send as thread_send, spawn};
 use conv::{int_to_dec};
 use string::{to_bytes};
 use io::{stdout};
 use io::sync::{write_all};
+use http::client::Client;
 use http::h1::IncomingRequest;
 use http::response::Response;
-use http::h2_session::{h2_connect};
 use http::server::{HttpHandler, Server, h2_serve_once};
 
-class DemoHandler {}
+class OkHandler {}
 
-impl HttpHandler<DemoHandler> {
-    fn handle(DemoHandler self, IncomingRequest req) -> Response {
-        let _path = req.path_val();
+impl HttpHandler<OkHandler> {
+    fn handle(OkHandler self, IncomingRequest req) -> Response {
+        let _m = req.method_val();
         let r = Response::ok();
-        r.status(201);
-        r.header("x-from", "handler");
-        r.body(to_bytes("from-handler"));
+        r.status(200);
+        r.body(to_bytes("ok"));
         return r;
     }
 }
@@ -37,23 +36,21 @@ fn server_thread(Sender tx) {
         Result::Ok(_) => 0,
         Result::Err(_) => panic "send port",
     };
-    match h2_serve_once(srv, new DemoHandler()) {
+    match h2_serve_once(srv, new OkHandler()) {
         Result::Ok(_) => 0,
         Result::Err(_) => 0,
     };
 }
 
-fn body_is(Vec<byte> b, string s) -> int {
-    let want = to_bytes(s);
-    if len(b) != len(want) {
+fn body_ok(Vec<byte> b) -> int {
+    if len(b) != 2 {
         return 0;
     }
-    let i = 0;
-    while i < len(b) {
-        if b[i] != want[i] {
-            return 0;
-        }
-        i = i + 1;
+    if b[0] != ("o" as byte) {
+        return 0;
+    }
+    if b[1] != ("k" as byte) {
+        return 0;
     }
     return 1;
 }
@@ -72,20 +69,26 @@ fn main() {
         Result::Err(_) => panic "recv",
     };
     let url = "http://127.0.0.1:" + int_to_dec(port) + "/";
-    match h2_connect(url) {
-        Result::Ok(r) => {
-            if r.status != 201 {
-                panic "status";
-            }
-            if body_is(r.body, "from-handler") == 0 {
-                panic "body";
-            }
-            write_all(stdout(), to_bytes("status=201\nbody=from-handler\nok"));
-        },
-        Result::Err(_) => panic "h2_connect",
-    };
+    let c = Client::new();
+    let i = 0;
+    while i < 200 {
+        match c.h2_get(url) {
+            Result::Ok(r) => {
+                if r.status != 200 {
+                    panic "status";
+                }
+                if body_ok(r.body) == 0 {
+                    panic "body";
+                }
+            },
+            Result::Err(_) => panic "h2_get",
+        };
+        i = i + 1;
+    }
+    c.close();
     match join(t) {
         Result::Ok(_) => 0,
         Result::Err(_) => 0,
     };
+    write_all(stdout(), to_bytes("ok"));
 }

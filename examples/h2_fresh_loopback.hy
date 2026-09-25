@@ -1,5 +1,4 @@
-// Cleartext HTTP/2 prior-knowledge loopback.
-// The server dispatches each stream to a handler; the client prints that status and body.
+// 200 sequential one-shot `h2_connect` calls (new TCP connection each GET).
 use thread::{Sender, channel, join, recv, send as thread_send, spawn};
 use conv::{int_to_dec};
 use string::{to_bytes};
@@ -10,15 +9,14 @@ use http::response::Response;
 use http::h2_session::{h2_connect};
 use http::server::{HttpHandler, Server, h2_serve_once};
 
-class DemoHandler {}
+class OkHandler {}
 
-impl HttpHandler<DemoHandler> {
-    fn handle(DemoHandler self, IncomingRequest req) -> Response {
-        let _path = req.path_val();
+impl HttpHandler<OkHandler> {
+    fn handle(OkHandler self, IncomingRequest req) -> Response {
+        let _m = req.method_val();
         let r = Response::ok();
-        r.status(201);
-        r.header("x-from", "handler");
-        r.body(to_bytes("from-handler"));
+        r.status(200);
+        r.body(to_bytes("ok"));
         return r;
     }
 }
@@ -37,25 +35,14 @@ fn server_thread(Sender tx) {
         Result::Ok(_) => 0,
         Result::Err(_) => panic "send port",
     };
-    match h2_serve_once(srv, new DemoHandler()) {
-        Result::Ok(_) => 0,
-        Result::Err(_) => 0,
-    };
-}
-
-fn body_is(Vec<byte> b, string s) -> int {
-    let want = to_bytes(s);
-    if len(b) != len(want) {
-        return 0;
-    }
     let i = 0;
-    while i < len(b) {
-        if b[i] != want[i] {
-            return 0;
-        }
+    while i < 200 {
+        match h2_serve_once(srv, new OkHandler()) {
+            Result::Ok(_) => 0,
+            Result::Err(_) => 0,
+        };
         i = i + 1;
     }
-    return 1;
 }
 
 fn main() {
@@ -72,20 +59,21 @@ fn main() {
         Result::Err(_) => panic "recv",
     };
     let url = "http://127.0.0.1:" + int_to_dec(port) + "/";
-    match h2_connect(url) {
-        Result::Ok(r) => {
-            if r.status != 201 {
-                panic "status";
-            }
-            if body_is(r.body, "from-handler") == 0 {
-                panic "body";
-            }
-            write_all(stdout(), to_bytes("status=201\nbody=from-handler\nok"));
-        },
-        Result::Err(_) => panic "h2_connect",
-    };
+    let i = 0;
+    while i < 200 {
+        match h2_connect(url) {
+            Result::Ok(r) => {
+                if r.status != 200 {
+                    panic "status";
+                }
+            },
+            Result::Err(_) => panic "h2_connect",
+        };
+        i = i + 1;
+    }
     match join(t) {
         Result::Ok(_) => 0,
         Result::Err(_) => 0,
     };
+    write_all(stdout(), to_bytes("ok"));
 }

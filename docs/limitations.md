@@ -3,6 +3,7 @@
 - HTTP/1.1 and HTTP/2 (cleartext prior knowledge and TLS ALPN `h2`, with HTTP/1.1 fallback). WebSocket is an H1 upgrade only (see [h2.md](h2.md), [ws.md](ws.md), [h3.md](h3.md))
 - No redirects or cookies
 - Connection pool reuses TCP and frames each message by `Content-Length` or chunked transfer encoding
+- HTTP/2 `Client::h2_get` / `h2_send` reuse one connection per origin on that client (not the HTTP/1.1 pool). `h2_connect` / `h2_request` stay one-shot
 - `fn drop()` on `HttpConn` / `ConnPool` / `Client` / `Server` closes owned sockets at GC time (and VM teardown), not RAII. Prefer `Client::close` / `close_conn` when shutdown must happen now
 - `coil test` harness does not support `thread::spawn`; run `coil examples/loopback.hy` / `examples/ws_loopback.hy` for full TCP loopback
 - Depends on [coil-stdlib](https://github.com/ardax-corp/coil-stdlib) (`conv`, `io::sync`) as a sibling root and [coil-tls](https://github.com/ardax-corp/coil-tls) via spool (`coil.lock` → `.spool/deps/tls`). `libtls` still needs a local native build on `[ffi] search_paths`

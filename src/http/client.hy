@@ -30,17 +30,18 @@ use http::response::{
 };
 use http::pool::{ConnPool};
 use http::conn::{read_http_message};
-use http::h2_session::{h2_connect, h2_request};
+use http::h2_session::{H2ClientSlot, h2_slot_close, h2_slot_empty, h2_slot_exchange};
 
 class Client {
     pool: ConnPool,
     use_pool: int,
+    h2: H2ClientSlot,
 }
 
 impl Client {
     pub static fn new() -> Client {
         let p = ConnPool::new();
-        return new Client(p, 1);
+        return new Client(p, 1, h2_slot_empty());
     }
 
     pub fn no_pool() {
@@ -49,6 +50,7 @@ impl Client {
 
     pub fn close() {
         self.pool.clear();
+        h2_slot_close(self.h2);
     }
 
     fn drop() {
@@ -154,19 +156,22 @@ impl Client {
     }
 
     /// HTTP/2 GET. Cleartext sends the connection preface. HTTPS uses ALPN.
+    /// Repeated calls on this client reuse one connection with new stream ids.
     pub fn h2_get(string url) -> Result<Response, HttpError> {
-        return h2_connect(url)?;
+        let extra = Headers::new();
+        let body: Vec<byte> = Vec::new();
+        return h2_slot_exchange(self.h2, url, "GET", extra, body)?;
     }
 
     /// HTTP/2 POST with a request body.
     pub fn h2_post(string url, Vec<byte> body) -> Result<Response, HttpError> {
         let extra = Headers::new();
-        return h2_request(url, "POST", extra, body)?;
+        return h2_slot_exchange(self.h2, url, "POST", extra, body)?;
     }
 
     /// HTTP/2 request using the same builder fields as `send`.
     pub fn h2_send(Request req) -> Result<Response, HttpError> {
-        return h2_request(req.url_val(), req.method_val(), req.headers_val(), req.body_val())?;
+        return h2_slot_exchange(self.h2, req.url_val(), req.method_val(), req.headers_val(), req.body_val())?;
     }
 }
 

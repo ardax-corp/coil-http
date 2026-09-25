@@ -345,6 +345,9 @@ fn h2_dispatch_ready(H2Session sess, HttpHandler handler, Vec<int> done_ids) -> 
 fn h2_streams_settled(H2Session sess, Vec<int> answered) -> int {
     let n = sess.stream_count();
     if n == 0 {
+        if sess.goaway_received() == 1 {
+            return 1;
+        }
         return 0;
     }
     let last = sess.goaway_last_stream();
@@ -426,7 +429,7 @@ fn h2_serve_conn(Stream conn, HttpHandler handler) -> Result<(), HttpError> {
     };
     let answered: Vec<int> = Vec::new();
     let guard = 0;
-    while guard < 256 {
+    while guard < 65536 {
         let f = match h2_read_frame(conn) {
             Result::Ok(v) => v,
             Result::Err(_) => {
