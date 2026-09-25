@@ -23,7 +23,7 @@ jobs:
           path: coil-lang
           # coil-lang main dbd8e64b (COI-408/407/410) plus Stream.fd (#459).
           # Bare main cannot compile coil-tls (`s.fd()`).
-          ref: 90fc86f5a0b8e4e7c8c9d0e1f2a3b4c5d6e7f809
+          ref: 90fc86f55dbddc8e1dea5f20013eefd86e59d001
 
       - uses: actions/checkout@v4
         with:
