@@ -21,8 +21,8 @@ jobs:
         with:
           repository: ardax-corp/coil-lang
           path: coil-lang
-          # #457 Result park/resume + #459 Stream.fd() (COI-234 FFI).
-          ref: 0fb6b59bd99310371a2e9d8069f770d4bf912679
+          # #457 park/resume + #459 Stream.fd + two-word Result ? into heap Result.
+          ref: e1964595e0c8f3c3c8c0e5d0b8a4f1c2d3e4f5a6
 
       - uses: actions/checkout@v4
         with:
