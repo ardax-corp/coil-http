@@ -10,7 +10,6 @@ jobs:
   test:
     runs-on: ubuntu-latest
     env:
-      COIL: ../coil-lang/target/debug/coil
       COIL_FLAGS: --root ../coil-stdlib/src --root .spool/deps/tls/src --allow-dload tls --allow-attach --ffi-search-path .spool/deps/tls/native --ffi-search-path ./native
     steps:
       - uses: actions/checkout@v4
@@ -19,26 +18,17 @@ jobs:
 
       - uses: actions/checkout@v4
         with:
-          repository: ardax-corp/coil-lang
-          path: coil-lang
-          # coil-lang #464: Q2 SROA free-fn identity + dense UNARY_NOT
-          # truthiness so h2_slot_can_reuse sees key and Option<H2Session>.
-          ref: bcc66b99e51a68b4054ff805bdf9e4a47cdc87bd
-
-      - uses: actions/checkout@v4
-        with:
           repository: ardax-corp/coil-stdlib
           path: coil-stdlib
 
-      - name: Install system deps
-        run: sudo apt-get update && sudo apt-get install -y libffi-dev build-essential
-
+      # coil-tls's native library is a cargo build.
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Build coil
-        working-directory: coil-lang
-        run: cargo build
+      # coil comes from the coil-lang `edge` release (a snapshot of its main,
+      # rebuilt after every green coil-lang CI run) instead of a source build.
+      - name: Install coil (edge)
+        uses: ardax-corp/coil-lang/.github/actions/setup-coil@main
 
       - name: Install tls from coil.lock
         working-directory: coil-http
