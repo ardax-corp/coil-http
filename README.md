@@ -40,11 +40,11 @@ fn main() {
 # siblings: coil-lang, coil-stdlib; tls sources from coil.lock
 ./scripts/spool_install.sh
 make -C .spool/deps/tls/native artifact
-coil test
+coil test --allow-net --allow-write
 
 # or from coil-lang checkout:
 cargo build
-./target/debug/coil test ../coil-http/tests
+./target/debug/coil test --allow-net --allow-write ../coil-http/tests
 ```
 
 Add `../coil-http/src` to your `[module].roots` when running tests from another project.
