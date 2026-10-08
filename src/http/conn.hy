@@ -1,5 +1,5 @@
 // Per-connection HTTP/1.1 framed reads (headers + Content-Length body).
-use io::{Stream, close, read, IoError, await_readable};
+use io::{Stream, close, read, IoError, wait_readable};
 use io::sync::{read_exact};
 use http::url::{HttpError, http_err_bad_response, http_err_io, http_fail_unit};
 use http::request::{concat_bytes};
@@ -219,7 +219,7 @@ fn read_http_message(HttpConn c) -> Result<Vec<byte>, HttpError> {
             let nopt = match read(c.inner, chunk) {
                 Result::Ok(o) => o,
                 Result::Err(IoError::WouldBlock) => {
-                    match await_readable(c.inner) {
+                    match wait_readable(c.inner) {
                         Result::Ok(_) => {
                             parked = 1;
                             guard = guard - 1;
@@ -252,7 +252,7 @@ fn read_http_message(HttpConn c) -> Result<Vec<byte>, HttpError> {
                         if len(acc) > 0 {
                             done = 1;
                         } else {
-                            match await_readable(c.inner) {
+                            match wait_readable(c.inner) {
                                 Result::Ok(_) => {
                                     guard = guard - 1;
                                     0

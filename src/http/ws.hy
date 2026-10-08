@@ -1,7 +1,7 @@
 // WebSocket (RFC 6455) over HTTP/1.1 upgrade. Framing + handshake; not a new transport.
 use encoding::{encode};
 use conv::{int_to_dec};
-use io::{Stream, close as io_close, to_bytes, read, IoError, await_readable};
+use io::{Stream, close as io_close, to_bytes, read, IoError, wait_readable};
 use io::net::tcp::connect as tcp_connect;
 use io::sync::{accept_wait, write_all};
 use tls::client::{enable as tls_enable, ClientOpts};
@@ -516,7 +516,7 @@ fn ws_read_n(HttpConn c, int n) -> Result<Vec<byte>, HttpError> {
                     },
                     Option::Some(got) => {
                         if got == 0 {
-                            match await_readable(s) {
+                            match wait_readable(s) {
                                 Result::Ok(_) => 0,
                                 Result::Err(_) => {
                                     http_err_io()?;
@@ -537,7 +537,7 @@ fn ws_read_n(HttpConn c, int n) -> Result<Vec<byte>, HttpError> {
                 0
             },
             Result::Err(IoError::WouldBlock) => {
-                match await_readable(s) {
+                match wait_readable(s) {
                     Result::Ok(_) => 0,
                     Result::Err(_) => {
                         http_err_io()?;
