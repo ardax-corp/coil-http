@@ -16,7 +16,7 @@ use http::url::{
 use http::request::{build_request_head};
 use http::response::{Response, bytes_slice_resp, parse_response};
 use http::conn::{HttpConn, close_conn, read_http_message};
-use io::{Stream, close as io_close, read, to_bytes, IoError, await_readable};
+use io::{Stream, close as io_close, read, to_bytes, IoError, wait_readable};
 use io::sync::{write_all};
 
 class H2Frame {
@@ -689,7 +689,7 @@ fn h2_read_n_wait(Stream s, int n, int wait) -> Result<Vec<byte>, HttpError> {
                                     return empty;
                                 }
                             }
-                            match await_readable(s) {
+                            match wait_readable(s) {
                                 Result::Ok(_) => 0,
                                 Result::Err(_) => {
                                     http_err_io()?;
@@ -716,7 +716,7 @@ fn h2_read_n_wait(Stream s, int n, int wait) -> Result<Vec<byte>, HttpError> {
                         return empty;
                     }
                 }
-                match await_readable(s) {
+                match wait_readable(s) {
                     Result::Ok(_) => 0,
                     Result::Err(_) => {
                         http_err_io()?;
