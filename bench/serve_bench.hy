@@ -3,7 +3,8 @@
 //   fast:  N clients, one request each (accept/spawn overhead)
 //   slow:  K keep-alive clients, two requests 20 ms apart (concurrency)
 // A thread-per-connection server cannot be written yet: a `Stream` is not
-// sendable to `thread::spawn`.
+// sendable to `thread::spawn`. Keep "fast" under the 128 listen backlog:
+// client connects block the VM thread (coil-lang#832).
 use clock::mono_nanos;
 use conv::{int_to_dec};
 use string::{to_bytes};
@@ -133,8 +134,8 @@ fn line(string name, int ms) {
 }
 
 fn main() {
-    line("fast sequential (200 clients)", run(false, 200, 0));
-    line("fast tasks      (200 clients)", run(true, 200, 0));
+    line("fast sequential (100 clients)", run(false, 100, 0));
+    line("fast tasks      (100 clients)", run(true, 100, 0));
     line("slow sequential (20 clients) ", run(false, 20, 20));
     line("slow tasks      (20 clients) ", run(true, 20, 20));
 }
