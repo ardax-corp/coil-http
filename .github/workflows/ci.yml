@@ -79,6 +79,10 @@ jobs:
         working-directory: coil-http
         run: $COIL $COIL_FLAGS examples/loopback.hy | grep -q ok
 
+      - name: Concurrent clients (serve runs a task per connection)
+        working-directory: coil-http
+        run: $COIL $COIL_FLAGS examples/concurrent_clients.hy | grep -q ok
+
       - name: Keep-alive loopback (two GETs on one connection)
         working-directory: coil-http
         run: $COIL $COIL_FLAGS examples/keepalive.hy | grep -q ok
