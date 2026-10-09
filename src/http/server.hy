@@ -4,6 +4,7 @@ use io::net::tcp::{listen, local_addr};
 use tls::server::{enable as tls_server_enable, ServerOpts};
 use tls::{alpn_protocol};
 use io::sync::{accept_wait, write_all};
+use task::{scope, Scope};
 
 use http::url::{HttpError, Headers, http_err_bad_response, http_err_not_supported, http_fail_stream, http_fail_unit};
 use http::h1::{IncomingRequest, encode_response, encode_response_keepalive, incoming_wants_close, parse_request};
@@ -199,36 +200,53 @@ fn serve_one_client(Server srv, HttpHandler handler) -> Result<(), HttpError> {
     return serve_conn_loop(stream, handler)?;
 }
 
+/// One accepted connection, in its own task: TLS handshake (when enabled),
+/// then HTTP/1.1 until the client closes.
+fn serve_accepted(Server srv, Stream conn, HttpHandler handler) -> int {
+    let stream = conn;
+    if srv.use_tls == 1 {
+        stream = match tls_server_enable(conn, new ServerOpts(srv.tls_cert, srv.tls_key, 0, "", "")) {
+            Result::Ok(s) => s,
+            Result::Err(_) => {
+                match io_close(conn) {
+                    Result::Ok(_) => 0,
+                    Result::Err(_) => 0,
+                };
+                return 0;
+            },
+        };
+    }
+    match serve_conn_loop(stream, handler) {
+        Result::Ok(_) => 0,
+        Result::Err(_) => 0,
+    };
+    return 0;
+}
+
+/// Accept loop: each connection is served by its own task, so a slow client
+/// (or a TLS handshake) does not hold up the others. Returns when `accept`
+/// fails, after the open connections finished.
 fn serve(Server srv, HttpHandler handler) -> Result<(), HttpError> {
     let listener = match srv.listener {
         Option::None => http_fail_stream()?,
         Option::Some(s) => s,
     };
-    let keep = 1;
-    while keep == 1 {
-        let conn = match accept_wait(listener) {
-            Result::Ok(s) => s,
-            Result::Err(_) => {
-                keep = 0;
-                listener
-            },
-        };
-        if keep == 1 {
-            let stream = conn;
-            if srv.use_tls == 1 {
-                stream = match tls_server_enable(conn, new ServerOpts(srv.tls_cert, srv.tls_key, 0, "", "")) {
-                    Result::Ok(s) => s,
+    let _ = scope(
+        fn (Scope s) use (srv, listener, handler) {
+            let keep = 1;
+            while keep == 1 {
+                match accept_wait(listener) {
+                    Result::Ok(conn) => {
+                        s.spawn(fn () use (srv, conn, handler) => serve_accepted(srv, conn, handler));
+                    },
                     Result::Err(_) => {
                         keep = 0;
-                        conn
                     },
-                };
+                }
             }
-            if keep == 1 {
-                serve_conn_loop(stream, handler)?;
-            }
-        }
-    }
+            0
+        },
+    );
     match io_close(listener) {
         Result::Ok(_) => 0,
         Result::Err(_) => 0,
