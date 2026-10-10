@@ -10,7 +10,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     env:
-      COIL_FLAGS: --root ../coil-stdlib/src --root .spool/deps/tls/src --allow-dload tls --allow-attach --allow-net --allow-write --ffi-search-path .spool/deps/tls/native --ffi-search-path ./native
+      COIL_FLAGS: --root ../coil-stdlib/src --root .spool/deps/tls/src --allow-dload tls --dload-trusted tls --allow-attach --allow-net --allow-write --ffi-search-path .spool/deps/tls/native --ffi-search-path ./native
     steps:
       - uses: actions/checkout@v4
         with:
