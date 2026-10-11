@@ -6,20 +6,15 @@ HTTPS uses the [coil-tls](https://github.com/ardax-corp/coil-tls) package (`use 
 
 ## Quick start
 
-```toml
-# coil.toml
-[dependencies]
-http = { git = "https://github.com/ardax-corp/coil-http.git", version = "^0.1" }
-tls = { git = "https://github.com/ardax-corp/coil-tls.git", version = "^0.1" }
+Sibling checkouts of this repo, [coil-tls](https://github.com/ardax-corp/coil-tls) and [coil-stdlib](https://github.com/ardax-corp/coil-stdlib). coil reads no `coil.toml` or `coil.lock`, so pass roots and grants as flags. Build `libtls` first (`make -C ../coil-tls/native artifact`):
 
-[module]
-roots = ["./src", "./.spool/deps/http", "./.spool/deps/tls/src", "../coil-stdlib/src"]
-
-[ffi]
-search_paths = ["./.spool/deps/tls/native"]
+```bash
+coil --root ../coil-http/src --root ../coil-tls/src --root ../coil-stdlib/src \
+  --ffi-search-path ../coil-tls/native --allow-dload tls --dload-trusted tls \
+  --allow-attach --allow-net main.hy
 ```
 
-`spool install` (or this repo's `scripts/spool_install.sh`) fetches tls from `coil.lock`. Build `libtls` in `.spool/deps/tls/native` so `dload("tls")` can find it. Native `.so` delivery is not a spool feature yet.
+With [spool](https://github.com/ardax-corp/spool), `spool add http --git https://github.com/ardax-corp/coil-http.git --version '^0.1'`. That currently fails: this repo requires `tls` `^0.1` and coil-tls has no tags yet. See [docs/consume.md](docs/consume.md).
 
 ```coil
 use http::client::Client;
@@ -36,18 +31,15 @@ fn main() {
 ## Test
 
 ```bash
-# from coil-http (coil on PATH or ../coil-lang/target/debug/coil)
-# siblings: coil-lang, coil-stdlib; tls sources from coil.lock
-./scripts/spool_install.sh
+# from coil-http, with coil on PATH and coil-stdlib as a sibling
+./scripts/spool_install.sh               # tls at the coil.lock rev into .spool/deps/tls
 make -C .spool/deps/tls/native artifact
-coil test --allow-net --allow-write
-
-# or from coil-lang checkout:
-cargo build
-./target/debug/coil test --allow-net --allow-write ../coil-http/tests
+coil test --root ../coil-stdlib/src --root .spool/deps/tls/src \
+  --ffi-search-path .spool/deps/tls/native \
+  --allow-dload tls --dload-trusted tls --allow-attach --allow-net --allow-write
 ```
 
-Add `../coil-http/src` to your `[module].roots` when running tests from another project.
+`scripts/spool_install.sh` runs `spool install` when spool is on PATH, which fails for the same missing coil-tls tag; without spool it checks out the `coil.lock` rev with git. Pass `--root ../coil-http/src` when running tests from another project.
 
 ## Layout
 

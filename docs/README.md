@@ -4,7 +4,7 @@ Userland HTTP/1.1 client and server for Coil programs.
 
 | Doc | Topic |
 |-----|-------|
-| [consume.md](consume.md) | Add to `coil.toml` roots |
+| [consume.md](consume.md) | Roots, grants, and spool |
 | [client.md](client.md) | `Client`, `Request`, pooling |
 | [server.md](server.md) | `Server`, `HttpHandler` |
 | [limitations.md](limitations.md) | v1 scope and compiler notes |
@@ -14,5 +14,5 @@ Userland HTTP/1.1 client and server for Coil programs.
 
 ## Requirements
 
-- [coil-tls](https://github.com/ardax-corp/coil-tls) on `[module].roots` and `libtls` on `[ffi] search_paths` for `https://`
+- [coil-tls](https://github.com/ardax-corp/coil-tls) on `--root` and `libtls` on `--ffi-search-path` for `https://`
 - `thread` module for loopback / concurrent server examples

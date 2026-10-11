@@ -1,36 +1,46 @@
 # Consume coil-http
 
-Add this package's `src/` directory as a module root. `conv` / `ascii` / `io::sync` come from [coil-stdlib](https://github.com/ardax-corp/coil-stdlib). HTTPS needs [coil-tls](https://github.com/ardax-corp/coil-tls) on `roots` and `libtls` on `[ffi] search_paths`.
+Add this package's `src/` directory as a module root (`--root`). `conv` / `ascii` / `io::sync` come from [coil-stdlib](https://github.com/ardax-corp/coil-stdlib). HTTPS needs [coil-tls](https://github.com/ardax-corp/coil-tls) as a root and `libtls` on the FFI search path. coil reads no `coil.toml` and no `coil.lock`.
 
-This package depends on `tls` via spool (`coil.lock`), not a `../coil-tls` path:
+## Sibling checkout
 
-```toml
-[dependencies]
-tls = { git = "https://github.com/ardax-corp/coil-tls.git", version = "^0.1" }
+Build `libtls` in a coil-tls checkout (`make -C ../coil-tls/native artifact`), then:
 
-[module]
-roots = ["./src", "../coil-stdlib/src", "./.spool/deps/tls/src"]
-
-[ffi]
-search_paths = ["./.spool/deps/tls/native"]
+```bash
+coil --root ../coil-http/src --root ../coil-tls/src --root ../coil-stdlib/src \
+  --ffi-search-path ../coil-tls/native --allow-dload tls --dload-trusted tls \
+  --allow-attach --allow-net main.hy
 ```
 
-The compiler requires `version` on git deps; `coil.lock` is the pin until [COI-219](https://linear.app/ardax/issue/COI-219).
+`--dload-pin tls=SHA256` instead of `--dload-trusted tls` pins the `libtls` build. `--allow-attach` is for TLS (`Stream.attach`); plain `http://` needs only `--allow-net`.
 
-`spool install` (or `scripts/spool_install.sh` when the spool CLI is not on PATH) materializes `.spool/deps/tls` from `coil.lock`. Build the cdylib in that tree (`make -C .spool/deps/tls/native artifact`) so `libtls.so` (or `.dylib` / `tls.dll`) sits on `[ffi] search_paths`. Native artifact publishing is not spool's job yet ([COI-60](https://linear.app/ardax/issue/COI-60)).
+## With spool
 
-Via spool (when this package is published):
+This repo is tagged (`v0.1.0`):
+
+```bash
+spool add http --git https://github.com/ardax-corp/coil-http.git --version '^0.1'
+```
+
+That currently fails: this repo's `coil.toml` requires `tls` `version = "^0.1"` and coil-tls has no tags, so spool finds no matching tag. Once coil-tls is tagged, the consumer `coil.toml` looks like this (spool does not build `libtls`):
 
 ```toml
+[module]
+roots = ["./src", ".spool/deps/http", ".spool/deps/tls"]
+
+[permissions]
+net = true
+attach = true
+
+[ffi]
+search_paths = ["../coil-tls/native"]
+allow = ["tls"]
+
 [dependencies]
 http = { git = "https://github.com/ardax-corp/coil-http.git", version = "^0.1" }
-tls = { git = "https://github.com/ardax-corp/coil-tls.git", version = "^0.1" }
-
-[module]
-roots = ["./src", "./.spool/deps/http", "./.spool/deps/tls/src"]
-
-[ffi]
-search_paths = ["./.spool/deps/tls/native"]
+tls = { git = "https://github.com/ardax-corp/coil-tls.git", version = "^0.1", trusted = true }
 ```
+
+spool links `.spool/deps/<name>` to each checkout's `src/`. The extra roots are needed because modules live in `src/http/` and `src/tls/`: through the `.spool/deps` root alone, `use http::client::Client` looks for `src/client.hy`.
 
 Imports use the `http::` prefix (`use http::client::Client`). TLS stays `use tls::{client, server}`. WebSocket is `use http::ws::{ws_connect, ws_serve_once}`.
