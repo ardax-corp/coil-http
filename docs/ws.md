@@ -55,7 +55,7 @@ Unit tests cover SHA-1 vectors, the RFC accept-key example, and frame encode/dec
 Full TCP echo is `examples/ws_loopback.hy`. **`coil test` cannot `thread::spawn`**; run:
 
 ```bash
-coil examples/ws_loopback.hy
+coil <flags> examples/ws_loopback.hy   # same roots and grants as `coil test` in the README Test section
 ```
 
 CI greps that example for `ok`.
