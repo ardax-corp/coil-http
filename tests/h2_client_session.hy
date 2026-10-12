@@ -1,4 +1,5 @@
 // HTTP/2 session on Client is separate from the HTTP/1.1 pool.
+use tests::assert;
 use http::client::Client;
 use http::h2_session::{h2_slot_close, h2_slot_empty, h2_origin_key};
 use http::url::{parse_url};
@@ -14,7 +15,7 @@ test("h2 origin key is scheme host port") {
         Result::Ok(v) => v,
         Result::Err(_) => panic "url",
     };
-    assert(h2_origin_key(u) == "http://127.0.0.1:9", "key")?;
+    assert!(h2_origin_key(u) == "http://127.0.0.1:9", "key");
 }
 
 test("https origin key keeps the scheme") {
@@ -22,7 +23,7 @@ test("https origin key keeps the scheme") {
         Result::Ok(v) => v,
         Result::Err(_) => panic "url",
     };
-    assert(h2_origin_key(u) == "https://api.example.com:443", "https key")?;
+    assert!(h2_origin_key(u) == "https://api.example.com:443", "https key");
 }
 
 test("Client close drains the h2 slot") {

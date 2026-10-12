@@ -1,4 +1,5 @@
 // Keep-alive response encode and Connection: close detection (no sockets).
+use tests::assert;
 use string::{to_bytes};
 use http::url::{find_bytes};
 use http::h1::{
@@ -50,7 +51,7 @@ test("incoming_wants_close detects Connection close") {
         Result::Ok(v) => v,
         Result::Err(_) => panic "parse",
     };
-    assert(incoming_wants_close(req) == 1, "wants close")?;
+    assert!(incoming_wants_close(req) == 1, "wants close");
 }
 
 test("incoming_wants_close is false without Connection close") {
@@ -59,7 +60,7 @@ test("incoming_wants_close is false without Connection close") {
         Result::Ok(v) => v,
         Result::Err(_) => panic "parse",
     };
-    assert(incoming_wants_close(req) == 0, "keep open")?;
+    assert!(incoming_wants_close(req) == 0, "keep open");
 }
 
 test("incoming_wants_close is case-insensitive on Close") {
@@ -68,5 +69,5 @@ test("incoming_wants_close is case-insensitive on Close") {
         Result::Ok(v) => v,
         Result::Err(_) => panic "parse",
     };
-    assert(incoming_wants_close(req) == 1, "Close")?;
+    assert!(incoming_wants_close(req) == 1, "Close");
 }

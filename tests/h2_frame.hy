@@ -1,4 +1,5 @@
 // HTTP/2 frame header encode/decode (no sockets).
+use tests::assert;
 use string::{to_bytes};
 use http::h2::{
     H2Frame,
@@ -24,14 +25,14 @@ use http::h2_session::{h2_connect};
 test("settings frame roundtrip") {
     let f = empty_settings_frame();
     let wire = encode_frame(f);
-    assert(len(wire) == 9, "header only")?;
+    assert!(len(wire) == 9, "header only");
     let g = match decode_frame(wire) {
         Result::Ok(v) => v,
         Result::Err(_) => panic "decode",
     };
-    assert(g.typ == frame_type_settings(), "type")?;
-    assert(g.stream_id == 0, "stream 0")?;
-    assert(len(g.payload) == 0, "empty")?;
+    assert!(g.typ == frame_type_settings(), "type");
+    assert!(g.stream_id == 0, "stream 0");
+    assert!(len(g.payload) == 0, "empty");
 }
 
 test("data frame payload") {
@@ -42,26 +43,26 @@ test("data frame payload") {
         Result::Ok(v) => v,
         Result::Err(_) => panic "decode",
     };
-    assert(g.typ == frame_type_data(), "data")?;
-    assert(g.flags == 1, "end stream")?;
-    assert(g.stream_id == 1, "sid")?;
-    assert(len(g.payload) == 2, "len")?;
+    assert!(g.typ == frame_type_data(), "data");
+    assert!(g.flags == 1, "end stream");
+    assert!(g.stream_id == 1, "sid");
+    assert!(len(g.payload) == 2, "len");
 }
 
 test("truncated frame is an error") {
     let raw = to_bytes("short");
     let r = decode_frame(raw);
-    assert(match r {
+    assert!(match r {
         Result::Ok(_) => false,
         Result::Err(_) => true,
-    }, "truncated")?;
+    }, "truncated");
 }
 
 test("connection preface") {
     let p = connection_preface();
-    assert(preface_ok(p) == 1, "self")?;
-    assert(len(p) == 24, "24 bytes")?;
-    assert(preface_ok(to_bytes("HTTP/1.1")) == 0, "not h1")?;
+    assert!(preface_ok(p) == 1, "self");
+    assert!(len(p) == 24, "24 bytes");
+    assert!(preface_ok(to_bytes("HTTP/1.1")) == 0, "not h1");
 }
 
 test("ping frame 8-byte payload") {
@@ -76,8 +77,8 @@ test("ping frame 8-byte payload") {
         Result::Ok(v) => v,
         Result::Err(_) => panic "decode",
     };
-    assert(g.typ == frame_type_ping(), "ping")?;
-    assert(len(g.payload) == 8, "opaque")?;
+    assert!(g.typ == frame_type_ping(), "ping");
+    assert!(len(g.payload) == 8, "opaque");
 }
 
 test("incomplete payload after valid header is an error") {
@@ -95,10 +96,10 @@ test("incomplete payload after valid header is an error") {
     raw.push(("a" as byte));
     raw.push(("b" as byte));
     let r = decode_frame(raw);
-    assert(match r {
+    assert!(match r {
         Result::Ok(_) => false,
         Result::Err(_) => true,
-    }, "short payload")?;
+    }, "short payload");
 }
 
 test("decode ignores trailing bytes after first frame") {
@@ -110,8 +111,8 @@ test("decode ignores trailing bytes after first frame") {
         Result::Ok(v) => v,
         Result::Err(_) => panic "decode with trailer",
     };
-    assert(g.typ == frame_type_settings(), "settings")?;
-    assert(len(g.payload) == 0, "empty payload")?;
+    assert!(g.typ == frame_type_settings(), "settings");
+    assert!(len(g.payload) == 0, "empty payload");
 }
 
 test("reserved stream id bit is cleared on decode") {
@@ -130,7 +131,7 @@ test("reserved stream id bit is cleared on decode") {
         Result::Ok(v) => v,
         Result::Err(_) => panic "decode reserved",
     };
-    assert(g.stream_id == 1, "mask reserved bit")?;
+    assert!(g.stream_id == 1, "mask reserved bit");
 }
 
 test("multi-byte stream id and length roundtrip") {
@@ -144,36 +145,36 @@ test("multi-byte stream id and length roundtrip") {
     let sid = 65537;
     let f = H2Frame::new(frame_type_headers(), 4, sid, payload);
     let wire = encode_frame(f);
-    assert(len(wire) == 9 + 300, "wire len")?;
-    assert(wire[0] == (0 as byte), "len hi")?;
-    assert(wire[1] == (1 as byte), "len mid 256")?;
-    assert(wire[2] == (44 as byte), "len lo 44")?;
+    assert!(len(wire) == 9 + 300, "wire len");
+    assert!(wire[0] == (0 as byte), "len hi");
+    assert!(wire[1] == (1 as byte), "len mid 256");
+    assert!(wire[2] == (44 as byte), "len lo 44");
     let g = match decode_frame(wire) {
         Result::Ok(v) => v,
         Result::Err(_) => panic "decode large",
     };
-    assert(g.typ == frame_type_headers(), "headers")?;
-    assert(g.flags == 4, "end headers")?;
-    assert(g.stream_id == sid, "sid")?;
-    assert(len(g.payload) == 300, "payload len")?;
-    assert(g.payload[0] == (0 as byte), "first")?;
-    assert(g.payload[299] == (43 as byte), "last")?;
+    assert!(g.typ == frame_type_headers(), "headers");
+    assert!(g.flags == 4, "end headers");
+    assert!(g.stream_id == sid, "sid");
+    assert!(len(g.payload) == 300, "payload len");
+    assert!(g.payload[0] == (0 as byte), "first");
+    assert!(g.payload[299] == (43 as byte), "last");
 }
 
 test("preface accepts longer buffer and rejects truncated") {
     let p = connection_preface();
     p.push(("Z" as byte));
-    assert(preface_ok(p) == 1, "prefix + junk")?;
+    assert!(preface_ok(p) == 1, "prefix + junk");
     let short = to_bytes("PRI * HTTP/2.0\r\n\r\nSM\r\n\r");
-    assert(preface_ok(short) == 0, "truncated")?;
+    assert!(preface_ok(short) == 0, "truncated");
 }
 
 test("h2_connect https refused port is err") {
     let c = h2_connect("https://127.0.0.1:1/");
-    assert(match c {
+    assert!(match c {
         Result::Ok(_) => false,
         Result::Err(_) => true,
-    }, "connect https refused")?;
+    }, "connect https refused");
 }
 
 test("goaway and window_update encode type bytes") {
@@ -182,72 +183,72 @@ test("goaway and window_update encode type bytes") {
         Result::Ok(v) => v,
         Result::Err(_) => panic "goaway",
     };
-    assert(g.typ == 7, "goaway type")?;
+    assert!(g.typ == 7, "goaway type");
     let empty2: Vec<byte> = Vec::new();
     let w = match decode_frame(encode_frame(H2Frame::new(frame_type_window_update(), 0, 0, empty2))) {
         Result::Ok(v) => v,
         Result::Err(_) => panic "window",
     };
-    assert(w.typ == 8, "window_update type")?;
+    assert!(w.typ == 8, "window_update type");
 }
 
 test("frame_wire_len short and complete") {
     let empty: Vec<byte> = Vec::new();
-    assert(frame_wire_len(empty) == 0, "empty")?;
+    assert!(frame_wire_len(empty) == 0, "empty");
     let short = to_bytes("12345678");
-    assert(frame_wire_len(short) == 0, "lt 9")?;
+    assert!(frame_wire_len(short) == 0, "lt 9");
     let wire = encode_frame(empty_settings_frame());
-    assert(frame_wire_len(wire) == 9, "settings")?;
+    assert!(frame_wire_len(wire) == 9, "settings");
     let cut: Vec<byte> = Vec::new();
     let i = 0;
     while i < 8 {
         cut.push(wire[i]);
         i = i + 1;
     }
-    assert(frame_wire_len(cut) == 0, "truncated header")?;
+    assert!(frame_wire_len(cut) == 0, "truncated header");
     let body = to_bytes("hi");
     let data = encode_frame(data_frame(1, body, 0));
-    assert(frame_wire_len(data) == 11, "9+2")?;
+    assert!(frame_wire_len(data) == 11, "9+2");
     let half: Vec<byte> = Vec::new();
     let j = 0;
     while j < 10 {
         half.push(data[j]);
         j = j + 1;
     }
-    assert(frame_wire_len(half) == 0, "truncated payload")?;
+    assert!(frame_wire_len(half) == 0, "truncated payload");
 }
 
 test("data_frame end stream flag") {
     let body = to_bytes("xy");
     let open = data_frame(3, body, 0);
-    assert(open.typ == frame_type_data(), "type")?;
-    assert(open.flags == 0, "open")?;
-    assert(open.stream_id == 3, "sid")?;
-    assert(len(open.payload) == 2, "len")?;
+    assert!(open.typ == frame_type_data(), "type");
+    assert!(open.flags == 0, "open");
+    assert!(open.stream_id == 3, "sid");
+    assert!(len(open.payload) == 2, "len");
     let ended = data_frame(3, body, 1);
-    assert(ended.flags == 1, "end stream")?;
+    assert!(ended.flags == 1, "end stream");
 }
 
 test("continuation and push_promise type ids") {
-    assert(frame_type_push_promise() == 5, "push")?;
-    assert(frame_type_continuation() == 9, "cont")?;
+    assert!(frame_type_push_promise() == 5, "push");
+    assert!(frame_type_continuation() == 9, "cont");
 }
 
 test("continuation frame wire roundtrip") {
     let block = to_bytes("hdr-frag");
     let open = continuation_frame(3, block, 0);
-    assert(open.typ == frame_type_continuation(), "type")?;
-    assert(open.flags == 0, "no end")?;
-    assert(open.stream_id == 3, "sid")?;
+    assert!(open.typ == frame_type_continuation(), "type");
+    assert!(open.flags == 0, "no end");
+    assert!(open.stream_id == 3, "sid");
     let ended = continuation_frame(3, block, 1);
-    assert(ended.flags == 4, "END_HEADERS")?;
+    assert!(ended.flags == 4, "END_HEADERS");
     let g = match decode_frame(encode_frame(ended)) {
         Result::Ok(v) => v,
         Result::Err(_) => panic "cont wire",
     };
-    assert(g.typ == 9, "type 9")?;
-    assert(g.flags == 4, "end headers")?;
-    assert(g.stream_id == 3, "sid")?;
-    assert(len(g.payload) == 8, "frag")?;
-    assert(g.payload[0] == ("h" as byte), "h")?;
+    assert!(g.typ == 9, "type 9");
+    assert!(g.flags == 4, "end headers");
+    assert!(g.stream_id == 3, "sid");
+    assert!(len(g.payload) == 8, "frag");
+    assert!(g.payload[0] == ("h" as byte), "h");
 }

@@ -1,4 +1,5 @@
 // Framing helpers: body-len sentinels, trailers, reject bad chunk wire (no sockets).
+use tests::assert;
 use string::{to_bytes};
 use http::h1::{decode_chunked_body, encode_chunked_body};
 use http::response::{header_block_body_len, http_framed_end, parse_response};
@@ -9,7 +10,7 @@ test("header_block_body_len content-length") {
         Result::Ok(v) => v,
         Result::Err(_) => panic "body len",
     };
-    assert(n == 4, "cl 4")?;
+    assert!(n == 4, "cl 4");
 }
 
 test("header_block_body_len missing is empty-body sentinel") {
@@ -18,7 +19,7 @@ test("header_block_body_len missing is empty-body sentinel") {
         Result::Ok(v) => v,
         Result::Err(_) => panic "body len",
     };
-    assert(n == 999999, "no cl")?;
+    assert!(n == 999999, "no cl");
 }
 
 test("header_block_body_len chunked is chunked sentinel") {
@@ -27,7 +28,7 @@ test("header_block_body_len chunked is chunked sentinel") {
         Result::Ok(v) => v,
         Result::Err(_) => panic "body len",
     };
-    assert(n == 999998, "chunked")?;
+    assert!(n == 999998, "chunked");
 }
 
 test("header_block_body_len prefers transfer-encoding over content-length") {
@@ -36,7 +37,7 @@ test("header_block_body_len prefers transfer-encoding over content-length") {
         Result::Ok(v) => v,
         Result::Err(_) => panic "body len",
     };
-    assert(n == 999998, "te wins")?;
+    assert!(n == 999998, "te wins");
 }
 
 test("decode chunked with trailer headers") {
@@ -45,8 +46,8 @@ test("decode chunked with trailer headers") {
         Result::Ok(b) => b,
         Result::Err(_) => panic "decode",
     };
-    assert(len(out) == 5, "body ignores trailers")?;
-    assert(out[0] == ("h" as byte), "h")?;
+    assert!(len(out) == 5, "body ignores trailers");
+    assert!(out[0] == ("h" as byte), "h");
 }
 
 test("framed end includes trailers before pipelined bytes") {
@@ -56,25 +57,25 @@ test("framed end includes trailers before pipelined bytes") {
         Result::Err(_) => panic "framed end",
     };
     let extra = to_bytes("NEXT");
-    assert(end + len(extra) == len(raw), "end before NEXT")?;
+    assert!(end + len(extra) == len(raw), "end before NEXT");
 }
 
 test("reject non-hex chunk size") {
     let raw = to_bytes("Z\r\nhello\r\n0\r\n\r\n");
     let r = decode_chunked_body(raw);
-    assert(match r {
+    assert!(match r {
         Result::Ok(_) => false,
         Result::Err(_) => true,
-    }, "bad size")?;
+    }, "bad size");
 }
 
 test("reject missing crlf after chunk data") {
     let raw = to_bytes("5\r\nhelloXX0\r\n\r\n");
     let r = decode_chunked_body(raw);
-    assert(match r {
+    assert!(match r {
         Result::Ok(_) => false,
         Result::Err(_) => true,
-    }, "bad terminator")?;
+    }, "bad terminator");
 }
 
 test("parse response prefers chunked over content-length") {
@@ -83,7 +84,7 @@ test("parse response prefers chunked over content-length") {
         Result::Ok(v) => v,
         Result::Err(_) => panic "parse",
     };
-    assert(len(r.body) == 5, "chunked body")?;
+    assert!(len(r.body) == 5, "chunked body");
 }
 
 test("encode empty body as zero chunk only") {
@@ -96,5 +97,5 @@ test("encode empty body as zero chunk only") {
         Result::Ok(b) => b,
         Result::Err(_) => panic "decode",
     };
-    assert(len(out) == 0, "empty")?;
+    assert!(len(out) == 0, "empty");
 }

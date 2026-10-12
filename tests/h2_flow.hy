@@ -1,4 +1,5 @@
 // HTTP/2 flow control, settings, ping, reset, goaway, bodies, trailers, handler dispatch.
+use tests::assert;
 use string::{to_bytes};
 use http::url::{Headers, parse_url};
 use http::h1::IncomingRequest;
@@ -243,9 +244,9 @@ test("ping is acked with the same payload") {
         Result::Ok(v) => v,
         Result::Err(_) => panic "ack",
     };
-    assert(ack.typ == frame_type_ping(), "ping")?;
-    assert(ack.flags == flag_ack(), "ack flag")?;
-    assert(bytes_eq(ack.payload, payload) == 1, "same payload")?;
+    assert!(ack.typ == frame_type_ping(), "ping");
+    assert!(ack.flags == flag_ack(), "ack flag");
+    assert!(bytes_eq(ack.payload, payload) == 1, "same payload");
 }
 
 test("zero window update is a connection error with goaway") {
@@ -257,16 +258,16 @@ test("zero window update is a connection error with goaway") {
     z.push(0 as byte);
     let f = H2Frame::new(frame_type_window_update(), 0, 0, z);
     let r = sess.feed(encode_frame(f));
-    assert(match r {
+    assert!(match r {
         Result::Ok(_) => false,
         Result::Err(_) => true,
-    }, "zero increment")?;
+    }, "zero increment");
     let out = sess.drain();
     let g = match decode_frame(out) {
         Result::Ok(v) => v,
         Result::Err(_) => panic "goaway",
     };
-    assert(g.typ == frame_type_goaway(), "goaway")?;
+    assert!(g.typ == frame_type_goaway(), "goaway");
 }
 
 test("window update overflow is a connection error") {
@@ -276,11 +277,11 @@ test("window update overflow is a connection error") {
         Result::Err(_) => panic "wu",
     };
     let r = sess.feed(encode_frame(wu));
-    assert(match r {
+    assert!(match r {
         Result::Ok(_) => false,
         Result::Err(_) => true,
-    }, "overflow")?;
-    assert(count_type(sess.drain(), frame_type_goaway()) == 1, "goaway")?;
+    }, "overflow");
+    assert!(count_type(sess.drain(), frame_type_goaway()) == 1, "goaway");
 }
 
 test("settings initial window max frame and max streams are applied") {
@@ -294,18 +295,18 @@ test("settings initial window max frame and max streams are applied") {
         Result::Ok(_) => 0,
         Result::Err(_) => panic "settings",
     };
-    assert(sess.peer_window == 1000, "window")?;
-    assert(sess.peer_max_frame == 20000, "frame")?;
-    assert(sess.peer_max_streams == 7, "streams")?;
-    assert(sess.encoder.cap == 128, "encoder table")?;
-    assert(sess.hpack.cap == 4096, "decoder stays")?;
+    assert!(sess.peer_window == 1000, "window");
+    assert!(sess.peer_max_frame == 20000, "frame");
+    assert!(sess.peer_max_streams == 7, "streams");
+    assert!(sess.encoder.cap == 128, "encoder table");
+    assert!(sess.hpack.cap == 4096, "decoder stays");
     let bad = H2Settings::new();
     bad.add(settings_id_max_frame_size(), 100);
     let r = sess.feed(encode_frame(settings_frame(bad)));
-    assert(match r {
+    assert!(match r {
         Result::Ok(_) => false,
         Result::Err(_) => true,
-    }, "tiny max frame")?;
+    }, "tiny max frame");
 }
 
 test("stream send window stalls and resumes") {
@@ -327,8 +328,8 @@ test("stream send window stalls and resumes") {
         Result::Err(_) => panic "write",
     };
     let first = cli.drain();
-    assert(data_payload_len(first) == 0, "stalled")?;
-    assert(count_type(first, frame_type_headers()) == 1, "headers out")?;
+    assert!(data_payload_len(first) == 0, "stalled");
+    assert!(count_type(first, frame_type_headers()) == 1, "headers out");
     let wu = match window_update_frame(1, 4) {
         Result::Ok(v) => v,
         Result::Err(_) => panic "wu",
@@ -338,7 +339,7 @@ test("stream send window stalls and resumes") {
         Result::Err(_) => panic "resume",
     };
     let second = cli.drain();
-    assert(data_payload_len(second) == 4, "four")?;
+    assert!(data_payload_len(second) == 4, "four");
     let wu2 = match window_update_frame(1, 2) {
         Result::Ok(v) => v,
         Result::Err(_) => panic "wu2",
@@ -347,7 +348,7 @@ test("stream send window stalls and resumes") {
         Result::Ok(_) => 0,
         Result::Err(_) => panic "resume2",
     };
-    assert(data_payload_len(cli.drain()) == 2, "rest")?;
+    assert!(data_payload_len(cli.drain()) == 2, "rest");
 }
 
 test("connection window stalls data then resumes") {
@@ -366,7 +367,7 @@ test("connection window stalls data then resumes") {
         Result::Ok(_) => 0,
         Result::Err(_) => panic "write",
     };
-    assert(data_payload_len(cli.drain()) == 3, "conn cap")?;
+    assert!(data_payload_len(cli.drain()) == 3, "conn cap");
     let wu = match window_update_frame(0, 7) {
         Result::Ok(v) => v,
         Result::Err(_) => panic "wu",
@@ -375,7 +376,7 @@ test("connection window stalls data then resumes") {
         Result::Ok(_) => 0,
         Result::Err(_) => panic "conn resume",
     };
-    assert(data_payload_len(cli.drain()) == 7, "rest")?;
+    assert!(data_payload_len(cli.drain()) == 7, "rest");
 }
 
 test("rst stream ends only that stream") {
@@ -402,7 +403,7 @@ test("rst stream ends only that stream") {
         Result::Ok(v) => v,
         Result::Err(_) => panic "reset flag",
     };
-    assert(rst == 1, "reset")?;
+    assert!(rst == 1, "reset");
     match sess.feed(encode_frame(data_frame(3, to_bytes("zz"), 1))) {
         Result::Ok(_) => 0,
         Result::Err(_) => panic "other stream",
@@ -411,12 +412,12 @@ test("rst stream ends only that stream") {
         Result::Ok(v) => v,
         Result::Err(_) => panic "body",
     };
-    assert(bytes_eq(body, to_bytes("zz")) == 1, "zz")?;
+    assert!(bytes_eq(body, to_bytes("zz")) == 1, "zz");
     let still = match sess.stream_reset(3) {
         Result::Ok(v) => v,
         Result::Err(_) => panic "r3",
     };
-    assert(still == 0, "stream 3 open")?;
+    assert!(still == 0, "stream 3 open");
 }
 
 test("goaway refuses new streams and lets earlier ones finish") {
@@ -432,8 +433,8 @@ test("goaway refuses new streams and lets earlier ones finish") {
         Result::Ok(_) => 0,
         Result::Err(_) => panic "goaway",
     };
-    assert(sess.goaway_received() == 1, "seen")?;
-    assert(sess.goaway_last_stream() == 1, "last")?;
+    assert!(sess.goaway_received() == 1, "seen");
+    assert!(sess.goaway_last_stream() == 1, "last");
     let h3 = Headers::new();
     h3.add(":method", "GET");
     h3.add(":path", "/later");
@@ -441,7 +442,7 @@ test("goaway refuses new streams and lets earlier ones finish") {
         Result::Ok(_) => 0,
         Result::Err(_) => panic "refused quietly",
     };
-    assert(sess.stream_count() == 1, "no stream 3")?;
+    assert!(sess.stream_count() == 1, "no stream 3");
     match sess.feed(encode_frame(data_frame(1, to_bytes("go"), 1))) {
         Result::Ok(_) => 0,
         Result::Err(_) => panic "finish 1",
@@ -450,7 +451,7 @@ test("goaway refuses new streams and lets earlier ones finish") {
         Result::Ok(v) => v,
         Result::Err(_) => panic "body",
     };
-    assert(bytes_eq(body, to_bytes("go")) == 1, "go")?;
+    assert!(bytes_eq(body, to_bytes("go")) == 1, "go");
 }
 
 test("handler sees post body trailers and interleaved gets") {
@@ -491,7 +492,7 @@ test("handler sees post body trailers and interleaved gets") {
         Result::Ok(_) => 0,
         Result::Err(_) => panic "post",
     };
-    assert(cli.encoder.size > 0, "encoder indexed")?;
+    assert!(cli.encoder.size > 0, "encoder indexed");
     let req = client_wire(cli);
     match cli.feed(srv_settings) {
         Result::Ok(_) => 0,
@@ -506,17 +507,17 @@ test("handler sees post body trailers and interleaved gets") {
         Result::Ok(_) => 0,
         Result::Err(_) => panic "srv ack",
     };
-    assert(srv.stream_count() == 3, "three")?;
+    assert!(srv.stream_count() == 3, "three");
     let h3 = match srv.stream_headers(3) {
         Result::Ok(v) => v,
         Result::Err(_) => panic "h3",
     };
-    assert(h3.value_at(0) == "GET", "get b")?;
+    assert!(h3.value_at(0) == "GET", "get b");
     let posted = match srv.stream_body(5) {
         Result::Ok(v) => v,
         Result::Err(_) => panic "post body",
     };
-    assert(bytes_eq(posted, to_bytes("xyzzy")) == 1, "xyzzy")?;
+    assert!(bytes_eq(posted, to_bytes("xyzzy")) == 1, "xyzzy");
     let done: Vec<int> = Vec::new();
     match h2_dispatch_ready(srv, new AppHandler(), done) {
         Result::Ok(_) => 0,
@@ -529,15 +530,15 @@ test("handler sees post body trailers and interleaved gets") {
     let r1 = resp_of(cli, 1);
     let r3 = resp_of(cli, 3);
     let r5 = resp_of(cli, 5);
-    assert(r1.status == 200, "200")?;
-    assert(bytes_eq(r1.body, to_bytes("alpha")) == 1, "alpha")?;
-    assert(header_get(r1, "x-path") == "/a", "path a")?;
-    assert(r3.status == 204, "204")?;
-    assert(bytes_eq(r3.body, to_bytes("bee")) == 1, "bee")?;
-    assert(r5.status == 201, "201")?;
-    assert(bytes_eq(r5.body, to_bytes("xyzzy")) == 1, "echo")?;
-    assert(header_get(r5, "x-echo") == "/echo", "echo path")?;
-    assert(trailer_get(r5, "x-trail") == "posted", "trailer")?;
+    assert!(r1.status == 200, "200");
+    assert!(bytes_eq(r1.body, to_bytes("alpha")) == 1, "alpha");
+    assert!(header_get(r1, "x-path") == "/a", "path a");
+    assert!(r3.status == 204, "204");
+    assert!(bytes_eq(r3.body, to_bytes("bee")) == 1, "bee");
+    assert!(r5.status == 201, "201");
+    assert!(bytes_eq(r5.body, to_bytes("xyzzy")) == 1, "echo");
+    assert!(header_get(r5, "x-echo") == "/echo", "echo path");
+    assert!(trailer_get(r5, "x-trail") == "posted", "trailer");
 }
 
 test("header block over max frame is split and reassembled") {
@@ -546,8 +547,8 @@ test("header block over max frame is split and reassembled") {
     h.add(":path", "/continuation-path");
     h.add("x-trace", "www.example.com");
     let wire = headers_frames(1, h, 1, 8);
-    assert(count_type(wire, frame_type_headers()) == 1, "headers")?;
-    assert(count_type(wire, 9) >= 1, "continuation")?;
+    assert!(count_type(wire, frame_type_headers()) == 1, "headers");
+    assert!(count_type(wire, 9) >= 1, "continuation");
     let sess = boot_session();
     match sess.feed(wire) {
         Result::Ok(_) => 0,
@@ -557,8 +558,8 @@ test("header block over max frame is split and reassembled") {
         Result::Ok(v) => v,
         Result::Err(_) => panic "headers",
     };
-    assert(got.value_at(1) == "/continuation-path", "path")?;
-    assert(got.value_at(2) == "www.example.com", "trace")?;
+    assert!(got.value_at(1) == "/continuation-path", "path");
+    assert!(got.value_at(2) == "www.example.com", "trace");
 }
 
 test("recv window overflow is a connection error") {
@@ -572,11 +573,11 @@ test("recv window overflow is a connection error") {
     };
     sess.conn_recv = 2;
     let r = sess.feed(encode_frame(data_frame(1, to_bytes("abcd"), 1)));
-    assert(match r {
+    assert!(match r {
         Result::Ok(_) => false,
         Result::Err(_) => true,
-    }, "overflow data")?;
-    assert(count_type(sess.drain(), frame_type_goaway()) == 1, "goaway")?;
+    }, "overflow data");
+    assert!(count_type(sess.drain(), frame_type_goaway()) == 1, "goaway");
 }
 
 test("peer max concurrent streams refuses another local stream") {
@@ -597,10 +598,10 @@ test("peer max concurrent streams refuses another local stream") {
         Result::Err(_) => panic "first",
     };
     let r = cli.write_request(3, h2_request_headers(u, "GET", Headers::new()), Vec::new());
-    assert(match r {
+    assert!(match r {
         Result::Ok(_) => false,
         Result::Err(_) => true,
-    }, "second refused")?;
+    }, "second refused");
 }
 
 test("closed stream frees a concurrency slot") {
@@ -683,15 +684,15 @@ test("trailer block is encoded when it is flushed") {
         Result::Ok(v) => v,
         Result::Err(_) => panic "h3",
     };
-    assert(h3.value_at(1) == "vv", "stream 3 trace")?;
+    assert!(h3.value_at(1) == "vv", "stream 3 trace");
     let tr = match dec.stream_trailers(1) {
         Result::Ok(v) => v,
         Result::Err(_) => panic "trailers",
     };
-    assert(tr.value_at(0) == "vv", "trailer trace")?;
+    assert!(tr.value_at(0) == "vv", "trailer trace");
     let body = match dec.stream_body(1) {
         Result::Ok(v) => v,
         Result::Err(_) => panic "body",
     };
-    assert(bytes_eq(body, to_bytes("abcd")) == 1, "abcd")?;
+    assert!(bytes_eq(body, to_bytes("abcd")) == 1, "abcd");
 }

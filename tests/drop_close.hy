@@ -1,4 +1,5 @@
 // GC-time drop closes sockets; explicit close_conn stays idempotent.
+use tests::assert;
 use gc::{collect};
 use io::{Stream};
 use io::net::tcp::{listen};
@@ -70,18 +71,18 @@ test("drop Server then bind again") {
 
 test("wrap starts open; close_conn sets closed") {
     let c = HttpConn::wrap(listen_stream());
-    assert(c.closed == 0, "wrap starts open")?;
+    assert!(c.closed == 0, "wrap starts open");
     close_conn(c);
-    assert(c.closed == 1, "close_conn marks closed")?;
+    assert!(c.closed == 1, "close_conn marks closed");
 }
 
 test("drop then close_conn is idempotent") {
     let c = HttpConn::wrap(listen_stream());
     c.drop();
-    assert(c.closed == 1, "drop marks closed")?;
+    assert!(c.closed == 1, "drop marks closed");
     close_conn(c);
     c.drop();
-    assert(c.closed == 1, "stays closed")?;
+    assert!(c.closed == 1, "stays closed");
 }
 
 test("ConnPool drop closes released sockets") {
@@ -92,9 +93,9 @@ test("ConnPool drop closes released sockets") {
         Result::Err(_) => panic "url",
     };
     p.release(u, c);
-    assert(c.closed == 0, "pooled stays open")?;
+    assert!(c.closed == 0, "pooled stays open");
     p.drop();
-    assert(c.closed == 1, "pool drop closes")?;
+    assert!(c.closed == 1, "pool drop closes");
 }
 
 test("Client close then drop is idempotent") {

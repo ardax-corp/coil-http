@@ -1,3 +1,4 @@
+use tests::assert;
 use string::{to_bytes};
 use http::url::{
     empty_headers,
@@ -160,7 +161,7 @@ test("only reserved headers yield no extras") {
     hs.add("content-length", "1");
     hs.add("connection", "keep-alive");
     let extras = format_extra_headers_str(hs.names, hs.values);
-    assert(extras == "__NONE__", "sentinel when all reserved")?;
+    assert!(extras == "__NONE__", "sentinel when all reserved");
 }
 
 test("uppercase reserved header spellings are skipped") {
@@ -205,7 +206,7 @@ test("reject method with crlf") {
         Result::Ok(m) => m,
         Result::Err(_) => panic "build",
     };
-    assert(request_line_ok(msg) == 0, "injected method fails request-line check")?;
+    assert!(request_line_ok(msg) == 0, "injected method fails request-line check");
 }
 
 test("reject header name with crlf") {
@@ -213,7 +214,7 @@ test("reject header name with crlf") {
     let values: Vec<string> = Vec::new();
     names.push("X-Evil\r\nHost");
     values.push("ok");
-    assert(headers_have_crlf(names, values) == 1, "header name CRLF")?;
+    assert!(headers_have_crlf(names, values) == 1, "header name CRLF");
 }
 
 test("reject header value with crlf") {
@@ -221,14 +222,14 @@ test("reject header value with crlf") {
     let values: Vec<string> = Vec::new();
     names.push("X-Trace");
     values.push("a\r\nb");
-    assert(headers_have_crlf(names, values) == 1, "header value CRLF")?;
+    assert!(headers_have_crlf(names, values) == 1, "header value CRLF");
 }
 
 test("extras sanitize rejects injected header line") {
     let bad = "X-Trace: a\r\nb\r\n";
     let r = extras_sanitize(bad);
-    assert(match r {
+    assert!(match r {
         Result::Ok(_) => false,
         Result::Err(_) => true,
-    }, "extras sanitize BadUrl")?;
+    }, "extras sanitize BadUrl");
 }

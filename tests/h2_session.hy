@@ -1,4 +1,5 @@
 // In-memory HTTP/2 session (preface, SETTINGS ACK, HEADERS/DATA mux).
+use tests::assert;
 use string::{to_bytes};
 use http::url::{Headers, parse_url};
 use http::h2::{
@@ -70,19 +71,19 @@ test("preface plus settings yields ack") {
         Result::Ok(v) => v,
         Result::Err(_) => panic "ack decode",
     };
-    assert(ack.typ == frame_type_settings(), "settings")?;
-    assert(ack.flags == flag_ack(), "ack")?;
-    assert(ack.stream_id == 0, "stream 0")?;
-    assert(len(ack.payload) == 0, "empty")?;
+    assert!(ack.typ == frame_type_settings(), "settings");
+    assert!(ack.flags == flag_ack(), "ack");
+    assert!(ack.stream_id == 0, "stream 0");
+    assert!(len(ack.payload) == 0, "empty");
 }
 
 test("bad preface is an error") {
     let s = H2Session::new();
     let r = s.feed(to_bytes("HTTP/1.1"));
-    assert(match r {
+    assert!(match r {
         Result::Ok(_) => false,
         Result::Err(_) => true,
-    }, "bad preface")?;
+    }, "bad preface");
 }
 
 test("headers GET slash and data end stream") {
@@ -97,28 +98,28 @@ test("headers GET slash and data end stream") {
         Result::Ok(_) => 0,
         Result::Err(_) => panic "feed",
     };
-    assert(sess.stream_count() == 1, "one stream")?;
+    assert!(sess.stream_count() == 1, "one stream");
     let headers = match sess.stream_headers(1) {
         Result::Ok(v) => v,
         Result::Err(_) => panic "headers",
     };
-    assert(headers.count() == 2, "two")?;
-    assert(headers.name_at(0) == ":method", "method")?;
-    assert(headers.value_at(0) == "GET", "GET")?;
-    assert(headers.name_at(1) == ":path", "path")?;
-    assert(headers.value_at(1) == "/", "slash")?;
+    assert!(headers.count() == 2, "two");
+    assert!(headers.name_at(0) == ":method", "method");
+    assert!(headers.value_at(0) == "GET", "GET");
+    assert!(headers.name_at(1) == ":path", "path");
+    assert!(headers.value_at(1) == "/", "slash");
     let got = match sess.stream_body(1) {
         Result::Ok(v) => v,
         Result::Err(_) => panic "body",
     };
-    assert(len(got) == 2, "len")?;
-    assert(got[0] == ("h" as byte), "h")?;
-    assert(got[1] == ("i" as byte), "i")?;
+    assert!(len(got) == 2, "len");
+    assert!(got[0] == ("h" as byte), "h");
+    assert!(got[1] == ("i" as byte), "i");
     let ended = match sess.stream_ended(1) {
         Result::Ok(v) => v,
         Result::Err(_) => panic "ended",
     };
-    assert(ended == 1, "end stream")?;
+    assert!(ended == 1, "end stream");
 }
 
 test("two streams interleaved") {
@@ -139,17 +140,17 @@ test("two streams interleaved") {
         Result::Ok(_) => 0,
         Result::Err(_) => panic "feed",
     };
-    assert(sess.stream_count() == 2, "two streams")?;
+    assert!(sess.stream_count() == 2, "two streams");
     let m1 = match sess.stream_headers(1) {
         Result::Ok(v) => v,
         Result::Err(_) => panic "h1",
     };
-    assert(m1.value_at(0) == "GET", "GET")?;
+    assert!(m1.value_at(0) == "GET", "GET");
     let m3 = match sess.stream_headers(3) {
         Result::Ok(v) => v,
         Result::Err(_) => panic "h3",
     };
-    assert(m3.value_at(0) == "POST", "POST")?;
+    assert!(m3.value_at(0) == "POST", "POST");
     let g1 = match sess.stream_body(1) {
         Result::Ok(v) => v,
         Result::Err(_) => panic "b1",
@@ -158,10 +159,10 @@ test("two streams interleaved") {
         Result::Ok(v) => v,
         Result::Err(_) => panic "b3",
     };
-    assert(len(g1) == 2, "b1 len")?;
-    assert(len(g3) == 2, "b3 len")?;
-    assert(g1[0] == ("a" as byte), "a")?;
-    assert(g3[0] == ("c" as byte), "c")?;
+    assert!(len(g1) == 2, "b1 len");
+    assert!(len(g3) == 2, "b3 len");
+    assert!(g1[0] == ("a" as byte), "a");
+    assert!(g3[0] == ("c" as byte), "c");
     let e1 = match sess.stream_ended(1) {
         Result::Ok(v) => v,
         Result::Err(_) => panic "e1",
@@ -170,8 +171,8 @@ test("two streams interleaved") {
         Result::Ok(v) => v,
         Result::Err(_) => panic "e3",
     };
-    assert(e1 == 1, "s1 ended")?;
-    assert(e3 == 1, "s3 ended")?;
+    assert!(e1 == 1, "s1 ended");
+    assert!(e3 == 1, "s3 ended");
 }
 
 test("headers on stream zero is an error") {
@@ -181,10 +182,10 @@ test("headers on stream zero is an error") {
     wire = cat_bytes(wire, encode_frame(empty_settings_frame()));
     wire = cat_bytes(wire, encode_frame(headers_frame(0, h, 1)));
     let r = sess.feed(wire);
-    assert(match r {
+    assert!(match r {
         Result::Ok(_) => false,
         Result::Err(_) => true,
-    }, "stream 0 headers")?;
+    }, "stream 0 headers");
 }
 
 test("data on even stream id is an error") {
@@ -196,10 +197,10 @@ test("data on even stream id is an error") {
     wire = cat_bytes(wire, encode_frame(headers_frame(1, h, 0)));
     wire = cat_bytes(wire, encode_frame(data_frame(2, body, 1)));
     let r = sess.feed(wire);
-    assert(match r {
+    assert!(match r {
         Result::Ok(_) => false,
         Result::Err(_) => true,
-    }, "even data")?;
+    }, "even data");
 }
 
 test("settings with params still acks") {
@@ -216,8 +217,8 @@ test("settings with params still acks") {
         Result::Ok(v) => v,
         Result::Err(_) => panic "ack",
     };
-    assert(ack.flags == flag_ack(), "ack")?;
-    assert(len(ack.payload) == 0, "empty ack")?;
+    assert!(ack.flags == flag_ack(), "ack");
+    assert!(len(ack.payload) == 0, "empty ack");
 }
 
 fn boot_session() -> H2Session {
@@ -259,7 +260,7 @@ test("partial preface then rest completes") {
         Result::Ok(v) => v,
         Result::Err(_) => panic "ack",
     };
-    assert(ack.flags == flag_ack(), "ack after split preface")?;
+    assert!(ack.flags == flag_ack(), "ack after split preface");
 }
 
 test("partial frame waits then completes on next feed") {
@@ -276,7 +277,7 @@ test("partial frame waits then completes on next feed") {
         Result::Ok(_) => 0,
         Result::Err(_) => panic "partial frame",
     };
-    assert(sess.stream_count() == 0, "not yet")?;
+    assert!(sess.stream_count() == 0, "not yet");
     let tail: Vec<byte> = Vec::new();
     while i < len(full) {
         tail.push(full[i]);
@@ -286,12 +287,12 @@ test("partial frame waits then completes on next feed") {
         Result::Ok(_) => 0,
         Result::Err(_) => panic "finish frame",
     };
-    assert(sess.stream_count() == 1, "one stream")?;
+    assert!(sess.stream_count() == 1, "one stream");
     let ended = match sess.stream_ended(1) {
         Result::Ok(v) => v,
         Result::Err(_) => panic "ended",
     };
-    assert(ended == 1, "end on headers")?;
+    assert!(ended == 1, "end on headers");
 }
 
 test("headers before settings is an error") {
@@ -300,10 +301,10 @@ test("headers before settings is an error") {
     let wire = connection_preface();
     wire = cat_bytes(wire, encode_frame(headers_frame(1, h, 1)));
     let r = sess.feed(wire);
-    assert(match r {
+    assert!(match r {
         Result::Ok(_) => false,
         Result::Err(_) => true,
-    }, "headers before settings")?;
+    }, "headers before settings");
 }
 
 test("settings on nonzero stream is an error") {
@@ -312,10 +313,10 @@ test("settings on nonzero stream is an error") {
     let bad = H2Frame::new(frame_type_settings(), 0, 1, empty);
     let wire = cat_bytes(connection_preface(), encode_frame(bad));
     let r = sess.feed(wire);
-    assert(match r {
+    assert!(match r {
         Result::Ok(_) => false,
         Result::Err(_) => true,
-    }, "settings stream 1")?;
+    }, "settings stream 1");
 }
 
 test("settings ack does not emit another ack") {
@@ -326,23 +327,23 @@ test("settings ack does not emit another ack") {
         Result::Err(_) => panic "feed ack",
     };
     let out = sess.drain();
-    assert(len(out) == 0, "no reply ack")?;
+    assert!(len(out) == 0, "no reply ack");
     let h = get_slash_headers();
     match sess.feed(encode_frame(headers_frame(1, h, 1))) {
         Result::Ok(_) => 0,
         Result::Err(_) => panic "headers after ack",
     };
-    assert(sess.stream_count() == 1, "stream after client ack")?;
+    assert!(sess.stream_count() == 1, "stream after client ack");
 }
 
 test("headers on even stream id is an error") {
     let sess = boot_session();
     let h = get_slash_headers();
     let r = sess.feed(encode_frame(headers_frame(2, h, 1)));
-    assert(match r {
+    assert!(match r {
         Result::Ok(_) => false,
         Result::Err(_) => true,
-    }, "even headers")?;
+    }, "even headers");
 }
 
 test("second headers with end stream are trailers") {
@@ -362,30 +363,30 @@ test("second headers with end stream are trailers") {
         Result::Ok(v) => v,
         Result::Err(_) => panic "trailer headers",
     };
-    assert(tr.count() == 1, "one trailer")?;
-    assert(tr.value_at(0) == "yes", "yes")?;
+    assert!(tr.count() == 1, "one trailer");
+    assert!(tr.value_at(0) == "yes", "yes");
     let ended = match sess.stream_ended(1) {
         Result::Ok(v) => v,
         Result::Err(_) => panic "ended",
     };
-    assert(ended == 1, "ended")?;
+    assert!(ended == 1, "ended");
     let again = Headers::new();
     again.add("x-trail", "no");
     let r = sess.feed(encode_frame(headers_frame(1, again, 0)));
-    assert(match r {
+    assert!(match r {
         Result::Ok(_) => false,
         Result::Err(_) => true,
-    }, "headers after end")?;
+    }, "headers after end");
 }
 
 test("data without headers is an error") {
     let sess = boot_session();
     let body = to_bytes("x");
     let r = sess.feed(encode_frame(data_frame(1, body, 1)));
-    assert(match r {
+    assert!(match r {
         Result::Ok(_) => false,
         Result::Err(_) => true,
-    }, "orphan data")?;
+    }, "orphan data");
 }
 
 test("data after end stream is an error") {
@@ -401,10 +402,10 @@ test("data after end stream is an error") {
         Result::Err(_) => panic "first data",
     };
     let r = sess.feed(encode_frame(data_frame(1, body, 1)));
-    assert(match r {
+    assert!(match r {
         Result::Ok(_) => false,
         Result::Err(_) => true,
-    }, "data after end")?;
+    }, "data after end");
 }
 
 test("two data frames append before end stream") {
@@ -428,14 +429,14 @@ test("two data frames append before end stream") {
         Result::Ok(v) => v,
         Result::Err(_) => panic "body",
     };
-    assert(len(got) == 4, "len")?;
-    assert(got[0] == ("a" as byte), "a")?;
-    assert(got[2] == ("c" as byte), "c")?;
+    assert!(len(got) == 4, "len");
+    assert!(got[0] == ("a" as byte), "a");
+    assert!(got[2] == ("c" as byte), "c");
     let ended = match sess.stream_ended(1) {
         Result::Ok(v) => v,
         Result::Err(_) => panic "ended",
     };
-    assert(ended == 1, "ended")?;
+    assert!(ended == 1, "ended");
 }
 
 test("window update and goaway after settings succeed") {
@@ -452,7 +453,7 @@ test("window update and goaway after settings succeed") {
         Result::Ok(_) => 0,
         Result::Err(_) => panic "goaway",
     };
-    assert(sess.stream_count() == 0, "no streams")?;
+    assert!(sess.stream_count() == 0, "no streams");
 }
 
 test("stream accessors reject unknown id") {
@@ -461,17 +462,17 @@ test("stream accessors reject unknown id") {
         Result::Ok(_) => false,
         Result::Err(_) => true,
     };
-    assert(h, "headers")?;
+    assert!(h, "headers");
     let b = match sess.stream_body(9) {
         Result::Ok(_) => false,
         Result::Err(_) => true,
     };
-    assert(b, "body")?;
+    assert!(b, "body");
     let e = match sess.stream_ended(9) {
         Result::Ok(_) => false,
         Result::Err(_) => true,
     };
-    assert(e, "ended")?;
+    assert!(e, "ended");
 }
 
 test("prior knowledge GET feeds stream 1 headers") {
@@ -484,25 +485,25 @@ test("prior knowledge GET feeds stream 1 headers") {
         Result::Ok(_) => 0,
         Result::Err(_) => panic "feed",
     };
-    assert(sess.stream_count() == 1, "one stream")?;
+    assert!(sess.stream_count() == 1, "one stream");
     let headers = match sess.stream_headers(1) {
         Result::Ok(v) => v,
         Result::Err(_) => panic "headers",
     };
-    assert(headers.count() == 4, "four")?;
-    assert(headers.name_at(0) == ":method", "method")?;
-    assert(headers.value_at(0) == "GET", "GET")?;
-    assert(headers.name_at(1) == ":path", "path")?;
-    assert(headers.value_at(1) == "/", "slash")?;
-    assert(headers.name_at(2) == ":scheme", "scheme")?;
-    assert(headers.value_at(2) == "http", "http")?;
-    assert(headers.name_at(3) == ":authority", "authority")?;
-    assert(headers.value_at(3) == "example.com", "host")?;
+    assert!(headers.count() == 4, "four");
+    assert!(headers.name_at(0) == ":method", "method");
+    assert!(headers.value_at(0) == "GET", "GET");
+    assert!(headers.name_at(1) == ":path", "path");
+    assert!(headers.value_at(1) == "/", "slash");
+    assert!(headers.name_at(2) == ":scheme", "scheme");
+    assert!(headers.value_at(2) == "http", "http");
+    assert!(headers.name_at(3) == ":authority", "authority");
+    assert!(headers.value_at(3) == "example.com", "host");
     let ended = match sess.stream_ended(1) {
         Result::Ok(v) => v,
         Result::Err(_) => panic "ended",
     };
-    assert(ended == 1, "end stream")?;
+    assert!(ended == 1, "end stream");
 }
 
 test("data on stream zero is an error") {
@@ -514,10 +515,10 @@ test("data on stream zero is an error") {
     };
     let body = to_bytes("x");
     let r = sess.feed(encode_frame(data_frame(0, body, 1)));
-    assert(match r {
+    assert!(match r {
         Result::Ok(_) => false,
         Result::Err(_) => true,
-    }, "data stream 0")?;
+    }, "data stream 0");
 }
 
 fn hpack_octets(int... xs) -> Vec<byte> {
@@ -554,32 +555,32 @@ test("session decoder table persists C.3 dynamic index across HEADERS") {
         Result::Ok(_) => 0,
         Result::Err(_) => panic "C.3.2 headers",
     };
-    assert(sess.stream_count() == 2, "two streams")?;
+    assert!(sess.stream_count() == 2, "two streams");
     let h1 = match sess.stream_headers(1) {
         Result::Ok(v) => v,
         Result::Err(_) => panic "h1",
     };
-    assert(h1.count() == 4, "c31 four")?;
-    assert(h1.value_at(3) == "www.example.com", "c31 host")?;
+    assert!(h1.count() == 4, "c31 four");
+    assert!(h1.value_at(3) == "www.example.com", "c31 host");
     let h3 = match sess.stream_headers(3) {
         Result::Ok(v) => v,
         Result::Err(_) => panic "h3",
     };
-    assert(h3.count() == 5, "c32 five")?;
-    assert(h3.value_at(0) == "GET", "GET")?;
-    assert(h3.name_at(3) == ":authority", "auth")?;
-    assert(h3.value_at(3) == "www.example.com", "host from table")?;
-    assert(h3.name_at(4) == "cache-control", "cc")?;
-    assert(h3.value_at(4) == "no-cache", "no-cache")?;
+    assert!(h3.count() == 5, "c32 five");
+    assert!(h3.value_at(0) == "GET", "GET");
+    assert!(h3.name_at(3) == ":authority", "auth");
+    assert!(h3.value_at(3) == "www.example.com", "host from table");
+    assert!(h3.name_at(4) == "cache-control", "cc");
+    assert!(h3.value_at(4) == "no-cache", "no-cache");
 }
 
 test("fresh headers_from_frame cannot resolve C.3.2 dynamic index") {
     let second = hpack_octets(130, 134, 132, 190, 88, 8, 110, 111, 45, 99, 97, 99, 104, 101);
     let r = headers_from_frame(raw_headers(1, second));
-    assert(match r {
+    assert!(match r {
         Result::Ok(_) => false,
         Result::Err(_) => true,
-    }, "idx 62 empty")?;
+    }, "idx 62 empty");
 }
 
 fn rest_after_frame(Vec<byte> wire) -> Vec<byte> {
@@ -604,32 +605,32 @@ test("HEADERS plus CONTINUATION assemble before HPACK") {
         Result::Ok(v) => v,
         Result::Err(_) => panic "first",
     };
-    assert(first.typ == frame_type_headers(), "headers")?;
-    assert(h2_end_headers_set(first.flags) == 0, "no end headers")?;
+    assert!(first.typ == frame_type_headers(), "headers");
+    assert!(h2_end_headers_set(first.flags) == 0, "no end headers");
     let rest = rest_after_frame(wire);
     let second = match decode_frame(rest) {
         Result::Ok(v) => v,
         Result::Err(_) => panic "cont",
     };
-    assert(second.typ == frame_type_continuation(), "continuation")?;
+    assert!(second.typ == frame_type_continuation(), "continuation");
     match sess.feed(wire) {
         Result::Ok(_) => 0,
         Result::Err(_) => panic "feed split",
     };
-    assert(sess.stream_count() == 1, "one")?;
+    assert!(sess.stream_count() == 1, "one");
     let got = match sess.stream_headers(1) {
         Result::Ok(v) => v,
         Result::Err(_) => panic "headers",
     };
-    assert(got.count() == 3, "three")?;
-    assert(got.value_at(0) == "GET", "GET")?;
-    assert(got.value_at(1) == "/continuation-path", "path")?;
-    assert(got.value_at(2) == "www.example.com", "host")?;
+    assert!(got.count() == 3, "three");
+    assert!(got.value_at(0) == "GET", "GET");
+    assert!(got.value_at(1) == "/continuation-path", "path");
+    assert!(got.value_at(2) == "www.example.com", "host");
     let ended = match sess.stream_ended(1) {
         Result::Ok(v) => v,
         Result::Err(_) => panic "ended",
     };
-    assert(ended == 1, "end stream on headers")?;
+    assert!(ended == 1, "end stream on headers");
 }
 
 test("incomplete HEADERS without CONTINUATION is not a stream yet") {
@@ -645,13 +646,13 @@ test("incomplete HEADERS without CONTINUATION is not a stream yet") {
         Result::Ok(_) => 0,
         Result::Err(_) => panic "partial",
     };
-    assert(sess.stream_count() == 0, "waiting")?;
+    assert!(sess.stream_count() == 0, "waiting");
     let rest = rest_after_frame(wire);
     match sess.feed(rest) {
         Result::Ok(_) => 0,
         Result::Err(_) => panic "finish",
     };
-    assert(sess.stream_count() == 1, "complete")?;
+    assert!(sess.stream_count() == 1, "complete");
 }
 
 test("DATA between HEADERS and CONTINUATION is an error") {
@@ -669,26 +670,26 @@ test("DATA between HEADERS and CONTINUATION is an error") {
     };
     let body = to_bytes("x");
     let r = sess.feed(encode_frame(data_frame(1, body, 1)));
-    assert(match r {
+    assert!(match r {
         Result::Ok(_) => false,
         Result::Err(_) => true,
-    }, "data during continuation")?;
+    }, "data during continuation");
 }
 
 test("SETTINGS_HEADER_TABLE_SIZE resizes the encoder only") {
     let sess = boot_session();
-    assert(sess.hpack.cap == 4096, "decoder cap")?;
-    assert(sess.encoder.cap == 4096, "encoder cap")?;
+    assert!(sess.hpack.cap == 4096, "decoder cap");
+    assert!(sess.encoder.cap == 4096, "encoder cap");
     let st = H2Settings::new();
     st.add(settings_id_header_table_size(), 256);
     match sess.feed(encode_frame(settings_frame(st))) {
         Result::Ok(_) => 0,
         Result::Err(_) => panic "settings",
     };
-    assert(sess.encoder.cap == 256, "encoder cap")?;
-    assert(sess.encoder.max_size == 256, "encoder max")?;
-    assert(sess.hpack.cap == 4096, "decoder unchanged")?;
-    assert(sess.hpack.max_size == 4096, "decoder max")?;
+    assert!(sess.encoder.cap == 256, "encoder cap");
+    assert!(sess.encoder.max_size == 256, "encoder max");
+    assert!(sess.hpack.cap == 4096, "decoder unchanged");
+    assert!(sess.hpack.max_size == 4096, "decoder max");
 }
 
 test("SETTINGS_HEADER_TABLE_SIZE zero keeps the decoder") {
@@ -706,10 +707,10 @@ test("SETTINGS_HEADER_TABLE_SIZE zero keeps the decoder") {
         Result::Ok(_) => 0,
         Result::Err(_) => panic "resize 0",
     };
-    assert(sess.encoder.max_size == 0, "encoder max 0")?;
-    assert(sess.encoder.size == 0, "encoder empty")?;
-    assert(sess.hpack.max_size == 4096, "decoder max")?;
-    assert(sess.hpack.size > 0, "decoder kept")?;
+    assert!(sess.encoder.max_size == 0, "encoder max 0");
+    assert!(sess.encoder.size == 0, "encoder empty");
+    assert!(sess.hpack.max_size == 4096, "decoder max");
+    assert!(sess.hpack.size > 0, "decoder kept");
     let second = hpack_octets(130, 134, 132, 190, 88, 8, 110, 111, 45, 99, 97, 99, 104, 101);
     match sess.feed(encode_frame(raw_headers(3, second))) {
         Result::Ok(_) => 0,
@@ -719,7 +720,7 @@ test("SETTINGS_HEADER_TABLE_SIZE zero keeps the decoder") {
         Result::Ok(v) => v,
         Result::Err(_) => panic "h3",
     };
-    assert(h3.value_at(3) == "www.example.com", "host from decoder table")?;
+    assert!(h3.value_at(3) == "www.example.com", "host from decoder table");
 }
 
 test("PUSH_PROMISE parse stores promised request") {
@@ -737,20 +738,20 @@ test("PUSH_PROMISE parse stores promised request") {
         Result::Ok(_) => 0,
         Result::Err(_) => panic "push",
     };
-    assert(sess.push_count() == 1, "one push")?;
+    assert!(sess.push_count() == 1, "one push");
     let pid = match sess.push_promised_id(0) {
         Result::Ok(v) => v,
         Result::Err(_) => panic "id",
     };
-    assert(pid == 2, "promised 2")?;
+    assert!(pid == 2, "promised 2");
     let got = match sess.push_headers(2) {
         Result::Ok(v) => v,
         Result::Err(_) => panic "push headers",
     };
-    assert(got.count() == 3, "three")?;
-    assert(got.value_at(0) == "GET", "GET")?;
-    assert(got.value_at(1) == "/style.css", "path")?;
-    assert(got.value_at(2) == "example.com", "auth")?;
+    assert!(got.count() == 3, "three");
+    assert!(got.value_at(0) == "GET", "GET");
+    assert!(got.value_at(1) == "/style.css", "path");
+    assert!(got.value_at(2) == "example.com", "auth");
 }
 
 test("queue_push emits PUSH_PROMISE") {
@@ -766,21 +767,21 @@ test("queue_push emits PUSH_PROMISE") {
         Result::Ok(v) => v,
         Result::Err(_) => panic "decode push",
     };
-    assert(f.typ == frame_type_push_promise(), "type")?;
-    assert(f.stream_id == 1, "associated")?;
-    assert(h2_end_headers_set(f.flags) == 1, "end headers")?;
+    assert!(f.typ == frame_type_push_promise(), "type");
+    assert!(f.stream_id == 1, "associated");
+    assert!(h2_end_headers_set(f.flags) == 1, "end headers");
     let p = match decode_push_promise_payload(f.payload) {
         Result::Ok(v) => v,
         Result::Err(_) => panic "payload",
     };
-    assert(p.promised_id == 2, "promised")?;
+    assert!(p.promised_id == 2, "promised");
     let decoded = match decode_header_block(p.block) {
         Result::Ok(v) => v,
         Result::Err(_) => panic "hpack",
     };
-    assert(decoded.value_at(0) == "GET", "GET")?;
-    assert(decoded.value_at(1) == "/app.js", "path")?;
-    assert(decoded.value_at(2) == "example.com", "auth")?;
+    assert!(decoded.value_at(0) == "GET", "GET");
+    assert!(decoded.value_at(1) == "/app.js", "path");
+    assert!(decoded.value_at(2) == "example.com", "auth");
 }
 
 test("PUSH_PROMISE then CONTINUATION assembles") {
@@ -799,18 +800,18 @@ test("PUSH_PROMISE then CONTINUATION assembles") {
         Result::Ok(v) => v,
         Result::Err(_) => panic "pp",
     };
-    assert(first.typ == frame_type_push_promise(), "push")?;
-    assert(h2_end_headers_set(first.flags) == 0, "no end")?;
+    assert!(first.typ == frame_type_push_promise(), "push");
+    assert!(h2_end_headers_set(first.flags) == 0, "no end");
     match sess.feed(wire) {
         Result::Ok(_) => 0,
         Result::Err(_) => panic "feed pp split",
     };
-    assert(sess.push_count() == 1, "one")?;
+    assert!(sess.push_count() == 1, "one");
     let got = match sess.push_headers(2) {
         Result::Ok(v) => v,
         Result::Err(_) => panic "headers",
     };
-    assert(got.value_at(1) == "/pretty-long-pushed-asset.css", "path")?;
+    assert!(got.value_at(1) == "/pretty-long-pushed-asset.css", "path");
 }
 
 test("odd promised stream id is an error") {
@@ -824,10 +825,10 @@ test("odd promised stream id is an error") {
     ph.add(":method", "GET");
     ph.add(":path", "/x");
     let r = sess.feed(encode_frame(push_promise_frame(1, 3, ph)));
-    assert(match r {
+    assert!(match r {
         Result::Ok(_) => false,
         Result::Err(_) => true,
-    }, "odd promised")?;
+    }, "odd promised");
 }
 
 test("goaway after headers keeps stream readable") {
@@ -841,27 +842,27 @@ test("goaway after headers keeps stream readable") {
         Result::Ok(_) => 0,
         Result::Err(_) => panic "goaway",
     };
-    assert(sess.stream_count() == 1, "still one")?;
+    assert!(sess.stream_count() == 1, "still one");
     let got = match sess.stream_headers(1) {
         Result::Ok(v) => v,
         Result::Err(_) => panic "headers after goaway",
     };
-    assert(got.value_at(0) == "GET", "GET")?;
+    assert!(got.value_at(0) == "GET", "GET");
     let ended = match sess.stream_ended(1) {
         Result::Ok(v) => v,
         Result::Err(_) => panic "ended",
     };
-    assert(ended == 1, "ended")?;
+    assert!(ended == 1, "ended");
 }
 
 test("orphan continuation without headers is an error") {
     let sess = boot_session();
     let frag = to_bytes("xx");
     let r = sess.feed(encode_frame(continuation_frame(1, frag, 1)));
-    assert(match r {
+    assert!(match r {
         Result::Ok(_) => false,
         Result::Err(_) => true,
-    }, "orphan cont")?;
+    }, "orphan cont");
 }
 
 test("two GET prior knowledge feeds stream 1 and 3") {
@@ -878,7 +879,7 @@ test("two GET prior knowledge feeds stream 1 and 3") {
         Result::Ok(_) => 0,
         Result::Err(_) => panic "feed two",
     };
-    assert(sess.stream_count() == 2, "two")?;
+    assert!(sess.stream_count() == 2, "two");
     let h1 = match sess.stream_headers(1) {
         Result::Ok(v) => v,
         Result::Err(_) => panic "h1",
@@ -887,6 +888,6 @@ test("two GET prior knowledge feeds stream 1 and 3") {
         Result::Ok(v) => v,
         Result::Err(_) => panic "h3",
     };
-    assert(h1.value_at(1) == "/a", "a")?;
-    assert(h3.value_at(1) == "/b", "b")?;
+    assert!(h1.value_at(1) == "/a", "a");
+    assert!(h3.value_at(1) == "/b", "b");
 }

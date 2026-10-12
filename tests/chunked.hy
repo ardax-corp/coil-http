@@ -1,4 +1,5 @@
 // Chunked transfer-encoding encode/decode (no sockets).
+use tests::assert;
 use string::{to_bytes};
 use http::url::{find_bytes};
 use http::h1::{decode_chunked_body, encode_chunked_body, parse_request, encode_response};
@@ -14,8 +15,8 @@ test("encode then decode roundtrip") {
         Result::Ok(b) => b,
         Result::Err(_) => panic "decode",
     };
-    assert(len(out) == 5, "len")?;
-    assert(out[0] == ("h" as byte), "h")?;
+    assert!(len(out) == 5, "len");
+    assert!(out[0] == ("h" as byte), "h");
 }
 
 test("decode two chunks") {
@@ -24,8 +25,8 @@ test("decode two chunks") {
         Result::Ok(b) => b,
         Result::Err(_) => panic "decode",
     };
-    assert(len(out) == 6, "len")?;
-    assert(out[5] == ("!" as byte), "bang")?;
+    assert!(len(out) == 6, "len");
+    assert!(out[5] == ("!" as byte), "bang");
 }
 
 test("decode ignores chunk extensions") {
@@ -34,16 +35,16 @@ test("decode ignores chunk extensions") {
         Result::Ok(b) => b,
         Result::Err(_) => panic "decode",
     };
-    assert(len(out) == 5, "len")?;
+    assert!(len(out) == 5, "len");
 }
 
 test("reject truncated chunk") {
     let raw = to_bytes("5\r\nhel");
     let r = decode_chunked_body(raw);
-    assert(match r {
+    assert!(match r {
         Result::Ok(_) => false,
         Result::Err(_) => true,
-    }, "truncated")?;
+    }, "truncated");
 }
 
 test("parse chunked response") {
@@ -52,8 +53,8 @@ test("parse chunked response") {
         Result::Ok(v) => v,
         Result::Err(_) => panic "parse",
     };
-    assert(r.status == 200, "status")?;
-    assert(len(r.body) == 5, "body")?;
+    assert!(r.status == 200, "status");
+    assert!(len(r.body) == 5, "body");
 }
 
 test("parse chunked request") {
@@ -62,8 +63,8 @@ test("parse chunked request") {
         Result::Ok(v) => v,
         Result::Err(_) => panic "parse",
     };
-    assert(req.method_val() == "POST", "method")?;
-    assert(len(req.body_val()) == 3, "body")?;
+    assert!(req.method_val() == "POST", "method");
+    assert!(len(req.body_val()) == 3, "body");
 }
 
 test("framed end of chunked response with extra bytes") {
@@ -73,7 +74,7 @@ test("framed end of chunked response with extra bytes") {
         Result::Err(_) => panic "framed end",
     };
     let extra = to_bytes("NEXT");
-    assert(end + len(extra) == len(raw), "end before NEXT")?;
+    assert!(end + len(extra) == len(raw), "end before NEXT");
 }
 
 test("encode_response uses chunked when header set") {
