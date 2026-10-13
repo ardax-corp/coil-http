@@ -1,4 +1,5 @@
 // Pure unit tests: response parse (no sockets).
+use tests::assert;
 use string::{to_bytes};
 use http::url::{find_bytes};
 use http::response::{
@@ -15,9 +16,9 @@ test("parse response with content-length") {
         Result::Ok(v) => v,
         Result::Err(_) => panic "parse failed",
     };
-    assert(r.status == 200, "status")?;
-    assert(len(r.body) == 2, "body len")?;
-    assert(header_get(r, "Content-Type") == "text/plain", "content-type")?;
+    assert!(r.status == 200, "status");
+    assert!(len(r.body) == 2, "body len");
+    assert!(header_get(r, "Content-Type") == "text/plain", "content-type");
 }
 
 test("parse response read-to-close body") {
@@ -26,8 +27,8 @@ test("parse response read-to-close body") {
         Result::Ok(v) => v,
         Result::Err(_) => panic "parse failed",
     };
-    assert(r.status == 204, "status")?;
-    assert(len(r.body) == 0, "empty body")?;
+    assert!(r.status == 204, "status");
+    assert!(len(r.body) == 0, "empty body");
 }
 
 test("response_status helper") {
@@ -44,8 +45,8 @@ test("response_status helper") {
         Result::Ok(v) => v,
         Result::Err(_) => panic "body helper",
     };
-    assert(st == 200, "status")?;
-    assert(n == 2, "body len")?;
+    assert!(st == 200, "status");
+    assert!(n == 2, "body len");
 }
 
 test("content-length header is case-insensitive") {
@@ -54,8 +55,8 @@ test("content-length header is case-insensitive") {
         Result::Ok(v) => v,
         Result::Err(_) => panic "parse failed",
     };
-    assert(r.status == 200, "status")?;
-    assert(len(r.body) == 3, "truncated to content-length")?;
+    assert!(r.status == 200, "status");
+    assert!(len(r.body) == 3, "truncated to content-length");
 }
 
 test("content-length truncates longer rest") {
@@ -64,7 +65,7 @@ test("content-length truncates longer rest") {
         Result::Ok(v) => v,
         Result::Err(_) => panic "parse failed",
     };
-    assert(len(r.body) == 1, "body len")?;
+    assert!(len(r.body) == 1, "body len");
     let x: Vec<byte> = Vec::new();
     x.push(88);
     if find_bytes(r.body, x) != 0 { panic "first byte X"; }
@@ -73,19 +74,19 @@ test("content-length truncates longer rest") {
 test("reject truncated body shorter than content-length") {
     let raw = to_bytes("HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nok");
     let r = parse_response(raw);
-    assert(match r {
+    assert!(match r {
         Result::Ok(_) => false,
         Result::Err(_) => true,
-    }, "expected BadResponse for truncated body")?;
+    }, "expected BadResponse for truncated body");
 }
 
 test("reject response without header terminator") {
     let raw = to_bytes("HTTP/1.1 200 OK\r\nContent-Length: 0\r\n");
     let r = parse_response(raw);
-    assert(match r {
+    assert!(match r {
         Result::Ok(_) => false,
         Result::Err(_) => true,
-    }, "expected bad response Err")?;
+    }, "expected bad response Err");
 }
 
 test("header_get missing returns empty") {
@@ -94,8 +95,8 @@ test("header_get missing returns empty") {
         Result::Ok(v) => v,
         Result::Err(_) => panic "parse failed",
     };
-    assert(r.status == 404, "status")?;
-    assert(header_get(r, "X-Missing") == "", "missing header")?;
+    assert!(r.status == 404, "status");
+    assert!(header_get(r, "X-Missing") == "", "missing header");
 }
 
 test("parses multiple response headers") {
@@ -104,8 +105,8 @@ test("parses multiple response headers") {
         Result::Ok(v) => v,
         Result::Err(_) => panic "parse failed",
     };
-    assert(r.status == 201, "status")?;
-    assert(header_get(r, "X-A") == "1", "x-a")?;
-    assert(header_get(r, "X-B") == "2", "x-b")?;
-    assert(header_count(r) >= 3, "header count")?;
+    assert!(r.status == 201, "status");
+    assert!(header_get(r, "X-A") == "1", "x-a");
+    assert!(header_get(r, "X-B") == "2", "x-b");
+    assert!(header_count(r) >= 3, "header count");
 }

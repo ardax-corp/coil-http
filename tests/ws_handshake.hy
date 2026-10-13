@@ -1,4 +1,5 @@
 // RFC 6455 §1.3 / §4 handshake helpers (no sockets).
+use tests::assert;
 use string::{to_bytes};
 use http::url::{find_bytes, parse_url};
 use http::h1::{IncomingRequest, parse_request};
@@ -22,7 +23,7 @@ fn must_req(string s) -> IncomingRequest {
 
 test("rfc 6455 accept key") {
     let accept = ws_accept_key("dGhlIHNhbXBsZSBub25jZQ==");
-    assert(accept == "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=", "accept")?;
+    assert!(accept == "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=", "accept");
 }
 
 test("upgrade request wire") {
@@ -35,9 +36,9 @@ test("upgrade request wire") {
         Result::Ok(v) => v,
         Result::Err(_) => panic "parse",
     };
-    assert(req.method_val() == "GET", "method")?;
-    assert(req.path_val() == "/chat", "path")?;
-    assert(ws_is_upgrade_req(req) == 1, "upgrade")?;
+    assert!(req.method_val() == "GET", "method");
+    assert!(req.path_val() == "/chat", "path");
+    assert!(ws_is_upgrade_req(req) == 1, "upgrade");
 }
 
 test("upgrade response has 101 and accept") {
@@ -52,26 +53,26 @@ test("ws url defaults") {
         Result::Ok(v) => v,
         Result::Err(_) => panic "ws",
     };
-    assert(u.scheme == "ws", "scheme")?;
-    assert(u.port == 80, "port")?;
+    assert!(u.scheme == "ws", "scheme");
+    assert!(u.port == 80, "port");
     let s = match parse_url("wss://example.com/socket") {
         Result::Ok(v) => v,
         Result::Err(_) => panic "wss",
     };
-    assert(s.scheme == "wss", "wss")?;
-    assert(s.port == 443, "443")?;
+    assert!(s.scheme == "wss", "wss");
+    assert!(s.port == 443, "443");
 }
 
 test("key is 24-char base64") {
     let k = ws_new_key(42);
-    assert(len(to_bytes(k)) == 24, "b64 16 bytes")?;
+    assert!(len(to_bytes(k)) == 24, "b64 16 bytes");
     let k2 = ws_new_key(43);
-    assert(len(to_bytes(k2)) == 24, "other seed")?;
+    assert!(len(to_bytes(k2)) == 24, "other seed");
 }
 
 test("second accept key vector") {
     let accept = ws_accept_key("x3JJHMbDL1EzLkh9GBhXDw==");
-    assert(accept == "HSmrc0sMlYUkAGmm5OPpG2HaGWk=", "accept 2")?;
+    assert!(accept == "HSmrc0sMlYUkAGmm5OPpG2HaGWk=", "accept 2");
 }
 
 test("upgrade request host includes non-default port") {
@@ -96,32 +97,32 @@ test("wss default host omits 443") {
 
 test("upgrade headers are case insensitive") {
     let req = must_req("GET / HTTP/1.1\r\nUpgrade: WebSocket\r\nConnection: keep-alive, Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n");
-    assert(ws_is_upgrade_req(req) == 1, "ci upgrade")?;
+    assert!(ws_is_upgrade_req(req) == 1, "ci upgrade");
 }
 
 test("reject post upgrade") {
     let req = must_req("POST / HTTP/1.1\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n");
-    assert(ws_is_upgrade_req(req) == 0, "post")?;
+    assert!(ws_is_upgrade_req(req) == 0, "post");
 }
 
 test("reject missing upgrade header") {
     let req = must_req("GET / HTTP/1.1\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n");
-    assert(ws_is_upgrade_req(req) == 0, "no upgrade")?;
+    assert!(ws_is_upgrade_req(req) == 0, "no upgrade");
 }
 
 test("reject missing connection upgrade") {
     let req = must_req("GET / HTTP/1.1\r\nUpgrade: websocket\r\nConnection: keep-alive\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n");
-    assert(ws_is_upgrade_req(req) == 0, "no conn")?;
+    assert!(ws_is_upgrade_req(req) == 0, "no conn");
 }
 
 test("reject wrong version") {
     let req = must_req("GET / HTTP/1.1\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 8\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n");
-    assert(ws_is_upgrade_req(req) == 0, "v8")?;
+    assert!(ws_is_upgrade_req(req) == 0, "v8");
 }
 
 test("reject missing key") {
     let req = must_req("GET / HTTP/1.1\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\n\r\n");
-    assert(ws_is_upgrade_req(req) == 0, "no key")?;
+    assert!(ws_is_upgrade_req(req) == 0, "no key");
 }
 
 test("check upgrade resp rfc accept") {
@@ -144,10 +145,10 @@ test("reject upgrade resp not 101") {
         Result::Err(_) => panic "parse 200",
     };
     let r = ws_check_upgrade_resp(resp, "dGhlIHNhbXBsZSBub25jZQ==");
-    assert(match r {
+    assert!(match r {
         Result::Ok(_) => false,
         Result::Err(_) => true,
-    }, "not 101")?;
+    }, "not 101");
 }
 
 test("reject upgrade resp wrong accept") {
@@ -157,10 +158,10 @@ test("reject upgrade resp wrong accept") {
         Result::Err(_) => panic "parse accept",
     };
     let r = ws_check_upgrade_resp(resp, "dGhlIHNhbXBsZSBub25jZQ==");
-    assert(match r {
+    assert!(match r {
         Result::Ok(_) => false,
         Result::Err(_) => true,
-    }, "bad accept")?;
+    }, "bad accept");
 }
 
 test("reject upgrade resp missing upgrade header") {
@@ -170,8 +171,8 @@ test("reject upgrade resp missing upgrade header") {
         Result::Err(_) => panic "parse missing",
     };
     let r = ws_check_upgrade_resp(resp, "dGhlIHNhbXBsZSBub25jZQ==");
-    assert(match r {
+    assert!(match r {
         Result::Ok(_) => false,
         Result::Err(_) => true,
-    }, "no upgrade")?;
+    }, "no upgrade");
 }

@@ -1,4 +1,5 @@
 // H1 request/response roundtrip (no sockets; full loopback in examples/loopback.hy).
+use tests::assert;
 use string::{to_bytes};
 use http::url::{find_bytes};
 use http::h1::{parse_request, encode_response};
@@ -10,8 +11,8 @@ test("parse request and build response") {
         Result::Ok(r) => r,
         Result::Err(_) => panic "parse request",
     };
-    assert(req.method_val() == "GET", "method")?;
-    assert(req.path_val() == "/hello", "path")?;
+    assert!(req.method_val() == "GET", "method");
+    assert!(req.path_val() == "/hello", "path");
     let resp = Response::ok();
     resp.header("Content-Type", "text/plain");
     resp.body(to_bytes("ok"));

@@ -1,4 +1,5 @@
 // Compile/resolve: package enable with ClientOpts/ServerOpts typechecks; libtls is on [ffi] search_paths.
+use tests::assert;
 use io::{open};
 use ffi::{dload};
 use tls::client::{enable as tls_client_enable, ClientOpts};
@@ -13,7 +14,7 @@ test("tls client enable typechecks and rejects non-TCP") {
         },
         Result::Err(_) => 9,
     };
-    assert(ok == 1, "non-TCP enable")?;
+    assert!(ok == 1, "non-TCP enable");
 }
 
 test("tls server enable typechecks and rejects non-TCP") {
@@ -25,13 +26,13 @@ test("tls server enable typechecks and rejects non-TCP") {
         },
         Result::Err(_) => 9,
     };
-    assert(ok == 1, "non-TCP server enable")?;
+    assert!(ok == 1, "non-TCP server enable");
 }
 
 test("libtls dload resolves") {
     match dload("tls") {
         Result::Ok(h) => {
-            assert(h != 0, "libtls handle")?;
+            assert!(h != 0, "libtls handle");
         },
         Result::Err(e) => panic e.message,
     };

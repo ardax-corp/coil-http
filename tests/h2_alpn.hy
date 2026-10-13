@@ -1,4 +1,5 @@
 // HTTPS ALPN selection helpers and TLS-path request shapes (no live TLS).
+use tests::assert;
 use string::{to_bytes};
 use http::url::{Url, empty_headers, find_bytes, parse_url};
 use http::request::{build_request_head};
@@ -35,29 +36,29 @@ fn bytes_slice_after(Vec<byte> b, int start) -> Vec<byte> {
 }
 
 test("client alpn offer prefers h2 then http11") {
-    assert(h2_client_alpn() == "h2,http/1.1", "offer list")?;
+    assert!(h2_client_alpn() == "h2,http/1.1", "offer list");
 }
 
 test("server alpn offer is h2 and http11") {
-    assert(h2_server_alpn() == "h2,http/1.1", "server offer")?;
+    assert!(h2_server_alpn() == "h2,http/1.1", "server offer");
 }
 
 test("alpn is h2 only for exact h2 token") {
-    assert(h2_alpn_is_h2("h2") == 1, "h2")?;
-    assert(h2_alpn_is_h2("http/1.1") == 0, "http11")?;
-    assert(h2_alpn_is_h2("") == 0, "empty")?;
-    assert(h2_alpn_is_h2("H2") == 0, "case")?;
-    assert(h2_alpn_is_h2("h2-14") == 0, "draft")?;
-    assert(h2_alpn_is_h2("h2,http/1.1") == 0, "list not selected")?;
+    assert!(h2_alpn_is_h2("h2") == 1, "h2");
+    assert!(h2_alpn_is_h2("http/1.1") == 0, "http11");
+    assert!(h2_alpn_is_h2("") == 0, "empty");
+    assert!(h2_alpn_is_h2("H2") == 0, "case");
+    assert!(h2_alpn_is_h2("h2-14") == 0, "draft");
+    assert!(h2_alpn_is_h2("h2,http/1.1") == 0, "list not selected");
 }
 
 test("https get headers carry scheme and default authority") {
     let h = h2_get_request_headers(must_url("https://api.example.com/v1"));
-    assert(h.count() == 4, "four")?;
-    assert(h.value_at(0) == "GET", "GET")?;
-    assert(h.value_at(1) == "/v1", "path")?;
-    assert(h.value_at(2) == "https", "scheme")?;
-    assert(h.value_at(3) == "api.example.com", "authority")?;
+    assert!(h.count() == 4, "four");
+    assert!(h.value_at(0) == "GET", "GET");
+    assert!(h.value_at(1) == "/v1", "path");
+    assert!(h.value_at(2) == "https", "scheme");
+    assert!(h.value_at(3) == "api.example.com", "authority");
 }
 
 test("https custom port prior knowledge wire uses https scheme") {
@@ -69,22 +70,22 @@ test("https custom port prior knowledge wire uses https scheme") {
         Result::Ok(v) => v,
         Result::Err(_) => panic "settings",
     };
-    assert(settings.typ == frame_type_settings(), "settings")?;
+    assert!(settings.typ == frame_type_settings(), "settings");
     let settings_len = 9 + len(settings.payload);
     let rest = bytes_slice_after(after, settings_len);
     let headers = match decode_frame(rest) {
         Result::Ok(v) => v,
         Result::Err(_) => panic "headers",
     };
-    assert(headers.typ == frame_type_headers(), "headers type")?;
-    assert(headers.stream_id == 1, "stream 1")?;
+    assert!(headers.typ == frame_type_headers(), "headers type");
+    assert!(headers.stream_id == 1, "stream 1");
     let decoded = match headers_from_frame(headers) {
         Result::Ok(v) => v,
         Result::Err(_) => panic "decode",
     };
-    assert(decoded.value_at(1) == "/secure", "path")?;
-    assert(decoded.value_at(2) == "https", "scheme")?;
-    assert(decoded.value_at(3) == "127.0.0.1:8443", "authority")?;
+    assert!(decoded.value_at(1) == "/secure", "path");
+    assert!(decoded.value_at(2) == "https", "scheme");
+    assert!(decoded.value_at(3) == "127.0.0.1:8443", "authority");
 }
 
 test("http11 fallback request head for https url") {
@@ -104,8 +105,8 @@ test("http11 fallback request head for https url") {
 
 test("h2_connect cleartext refused port is err") {
     let c = h2_connect("http://127.0.0.1:1/");
-    assert(match c {
+    assert!(match c {
         Result::Ok(_) => false,
         Result::Err(_) => true,
-    }, "connect http refused")?;
+    }, "connect http refused");
 }
