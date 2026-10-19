@@ -41,7 +41,7 @@ impl IncomingRequest {
 
 fn incoming_content_length(Headers h) -> Result<int, HttpError> {
     let i = 0;
-    let n = len(h.names);
+    let n = h.names.len();
     while i < n {
         if header_name_eq_ci(h.names[i], "Content-Length") == 1 {
             return parse_int_bytes(to_bytes(h.values[i]))?;
@@ -53,7 +53,7 @@ fn incoming_content_length(Headers h) -> Result<int, HttpError> {
 
 fn connection_is_close(Headers h) -> int {
     let i = 0;
-    let n = len(h.names);
+    let n = h.names.len();
     while i < n {
         if header_name_eq_ci(h.names[i], "Connection") == 1 {
             if h.values[i] == "close" {
@@ -78,7 +78,7 @@ fn parse_request(Vec<byte> raw) -> Result<IncomingRequest, HttpError> {
         http_err_bad_response()?;
     }
     let header_bytes = bytes_slice_resp(raw, 0, sep);
-    let rest = bytes_slice_resp(raw, sep + 4, len(raw));
+    let rest = bytes_slice_resp(raw, sep + 4, raw.len());
 
     let eol0 = find_crlf(header_bytes, 0);
     if eol0 == 999999 {
@@ -86,7 +86,7 @@ fn parse_request(Vec<byte> raw) -> Result<IncomingRequest, HttpError> {
     }
     let line = bytes_slice_resp(header_bytes, 0, eol0);
     let sp: byte = " ";
-    let ln = len(line);
+    let ln = line.len();
     let mi = 0;
     let m_end = 999999;
     while mi < ln {
@@ -121,7 +121,7 @@ fn parse_request(Vec<byte> raw) -> Result<IncomingRequest, HttpError> {
 
     let headers = Headers::new();
     let pos = eol0 + 2;
-    let n = len(header_bytes);
+    let n = header_bytes.len();
     while pos < n {
         let eol = find_crlf(header_bytes, pos);
         let line_end = n;
@@ -135,12 +135,12 @@ fn parse_request(Vec<byte> raw) -> Result<IncomingRequest, HttpError> {
             if cpos != 999999 {
                 let name = bytes_to_string(bytes_slice_resp(hline, 0, cpos))?;
                 let val_start = cpos + 1;
-                if val_start < len(hline) {
+                if val_start < hline.len() {
                     if hline[val_start] == (" " as byte) {
                         val_start = val_start + 1;
                     }
                 }
-                let value = bytes_to_string(bytes_slice_resp(hline, val_start, len(hline)))?;
+                let value = bytes_to_string(bytes_slice_resp(hline, val_start, hline.len()))?;
                 headers.add(name, value);
             }
         }
@@ -157,10 +157,10 @@ fn parse_request(Vec<byte> raw) -> Result<IncomingRequest, HttpError> {
         body = resp_decode_chunked(rest)?;
     } else {
         if cl != 999999 {
-            if cl > len(rest) {
+            if cl > rest.len() {
                 http_err_bad_response()?;
             }
-            if cl < len(rest) {
+            if cl < rest.len() {
                 body = bytes_slice_resp(rest, 0, cl);
             }
         }
@@ -180,11 +180,11 @@ fn build_response_head(Response r) -> Vec<byte> {
     } else if status == 201 {
         reason = "Created";
     }
-    let bl = len(r.body);
+    let bl = r.body.len();
     let head = "HTTP/1.1 " + int_to_dec(status) + " " + reason + "\r\nContent-Length: " + int_to_dec(bl) + "\r\n";
     let i = 0;
     let acc = head;
-    let n = len(r.header_names);
+    let n = r.header_names.len();
     while i < n {
         acc = acc + r.header_names[i] + ": " + r.header_values[i] + "\r\n";
         i = i + 1;
@@ -201,11 +201,11 @@ fn build_response_head_keepalive(Response r) -> Vec<byte> {
     } else if status == 500 {
         reason = "Internal Server Error";
     }
-    let bl = len(r.body);
+    let bl = r.body.len();
     let head = "HTTP/1.1 " + int_to_dec(status) + " " + reason + "\r\nContent-Length: " + int_to_dec(bl) + "\r\n";
     let i = 0;
     let acc = head;
-    let n = len(r.header_names);
+    let n = r.header_names.len();
     while i < n {
         acc = acc + r.header_names[i] + ": " + r.header_values[i] + "\r\n";
         i = i + 1;
@@ -237,7 +237,7 @@ fn build_response_head_chunked(Response r, int keep_alive) -> Vec<byte> {
     let head = "HTTP/1.1 " + int_to_dec(status) + " " + reason + "\r\n";
     let i = 0;
     let acc = head;
-    let n = len(r.header_names);
+    let n = r.header_names.len();
     let saw_te = 0;
     while i < n {
         acc = acc + r.header_names[i] + ": " + r.header_values[i] + "\r\n";

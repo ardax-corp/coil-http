@@ -19,7 +19,7 @@ use http::hpack::{
 fn hpack_octets(int... xs) -> Vec<byte> {
     let out: Vec<byte> = Vec::new();
     let i = 0;
-    while i < len(xs) {
+    while i < xs.len() {
         out.push(xs[i] as byte);
         i = i + 1;
     }
@@ -34,14 +34,14 @@ test("hpack int small roundtrip") {
         Result::Err(_) => panic "decode int",
     };
     assert!(d.value == 10, "value");
-    assert!(d.next == len(out), "consumed");
-    assert!(len(out) == 1, "fits prefix");
+    assert!(d.next == out.len(), "consumed");
+    assert!(out.len() == 1, "fits prefix");
 }
 
 test("hpack int above prefix roundtrip") {
     let out: Vec<byte> = Vec::new();
     encode_hpack_int(out, 1337, 5, 0);
-    assert!(len(out) == 3, "3 bytes");
+    assert!(out.len() == 3, "3 bytes");
     assert!((out[0] as int) == 31, "prefix ones");
     assert!((out[1] as int) == 154, "cont");
     assert!((out[2] as int) == 10, "last");
@@ -61,7 +61,7 @@ test("hpack string literal roundtrip") {
         Result::Err(_) => panic "decode str",
     };
     assert!(d.value == "hello", "hello");
-    assert!(d.next == len(out), "consumed");
+    assert!(d.next == out.len(), "consumed");
 }
 
 test("encode GET path slash uses static indices") {
@@ -69,7 +69,7 @@ test("encode GET path slash uses static indices") {
     h.add(":method", "GET");
     h.add(":path", "/");
     let block = encode_header_block(h);
-    assert!(len(block) == 2, "two indexed");
+    assert!(block.len() == 2, "two indexed");
     assert!((block[0] as int) == 130, "index 2");
     assert!((block[1] as int) == 132, "index 4");
     let g = match decode_header_block(block) {
@@ -143,13 +143,13 @@ test("huffman string decodes www.example.com") {
         Result::Err(_) => panic "huffman www.example.com",
     };
     assert!(d.value == "www.example.com", "www.example.com");
-    assert!(d.next == len(raw), "consumed");
+    assert!(d.next == raw.len(), "consumed");
 }
 
 test("huffman encode www.example.com matches C.4.1") {
     let raw = encode_hpack_huffman(to_bytes("www.example.com"));
     let want = hpack_octets(241, 227, 194, 229, 242, 58, 107, 160, 171, 144, 244, 255);
-    assert!(len(raw) == 12, "12 octets");
+    assert!(raw.len() == 12, "12 octets");
     let i = 0;
     while i < 12 {
         assert!((raw[i] as int) == (want[i] as int), "c41 byte");
@@ -167,7 +167,7 @@ test("hpack string uses H=1 when huffman is shorter") {
         Result::Err(_) => panic "roundtrip huffman",
     };
     assert!(d.value == "www.example.com", "value");
-    assert!(d.next == len(out), "consumed");
+    assert!(d.next == out.len(), "consumed");
 }
 
 test("hpack string encode decode roundtrip hello") {
@@ -178,7 +178,7 @@ test("hpack string encode decode roundtrip hello") {
         Result::Err(_) => panic "hello",
     };
     assert!(d.value == "hello", "hello");
-    assert!(d.next == len(out), "consumed");
+    assert!(d.next == out.len(), "consumed");
 }
 
 test("hpack string encode decode roundtrip empty") {
@@ -190,7 +190,7 @@ test("hpack string encode decode roundtrip empty") {
         Result::Err(_) => panic "empty",
     };
     assert!(d.value == "", "empty");
-    assert!(d.next == len(out), "consumed");
+    assert!(d.next == out.len(), "consumed");
 }
 
 test("hpack string encode decode roundtrip slash") {
@@ -246,7 +246,7 @@ test("POST path index.html https use static indices") {
     h.add(":path", "/index.html");
     h.add(":scheme", "https");
     let block = encode_header_block(h);
-    assert!(len(block) == 3, "three indexed");
+    assert!(block.len() == 3, "three indexed");
     assert!((block[0] as int) == 131, "index 3");
     assert!((block[1] as int) == 133, "index 5");
     assert!((block[2] as int) == 135, "index 7");
@@ -371,7 +371,7 @@ test("hpack int empty buffer is an error") {
 test("hpack int exact prefix max uses continuation") {
     let out: Vec<byte> = Vec::new();
     encode_hpack_int(out, 31, 5, 0);
-    assert!(len(out) == 2, "two bytes");
+    assert!(out.len() == 2, "two bytes");
     assert!((out[0] as int) == 31, "prefix");
     assert!((out[1] as int) == 0, "zero rem");
     let d = match decode_hpack_int(out, 0, 5) {
@@ -523,7 +523,7 @@ test("encode incremental then dynamic index 62") {
     let h2 = Headers::new();
     h2.add("x-trace", "abc");
     let second = encode_header_block_with(h2, t);
-    assert!(len(second) == 1, "one octet");
+    assert!(second.len() == 1, "one octet");
     assert!((second[0] as int) == 190, "index 62");
     let g = match decode_header_block_with(second, t) {
         Result::Ok(v) => v,
@@ -545,9 +545,9 @@ test("rfc C.4 encode reuses authority as index 62") {
     let want1 = hpack_octets(
         130, 134, 132, 65, 140, 241, 227, 194, 229, 242, 58, 107, 160, 171, 144, 244, 255
     );
-    assert!(len(first) == len(want1), "C.4.1 len");
+    assert!(first.len() == want1.len(), "C.4.1 len");
     let i = 0;
-    while i < len(want1) {
+    while i < want1.len() {
         assert!((first[i] as int) == (want1[i] as int), "C.4.1 byte");
         i = i + 1;
     }
@@ -558,7 +558,7 @@ test("rfc C.4 encode reuses authority as index 62") {
     h2.add(":authority", "www.example.com");
     h2.add("cache-control", "no-cache");
     let second = encode_header_block_with(h2, t);
-    assert!(len(second) >= 5, "C.4.2 min");
+    assert!(second.len() >= 5, "C.4.2 min");
     assert!((second[0] as int) == 130, "GET");
     assert!((second[1] as int) == 134, "http");
     assert!((second[2] as int) == 132, "slash");

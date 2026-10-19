@@ -115,7 +115,7 @@ fn encode_hpack_int(Vec<byte> out, int value, int nbits, int hi) {
 
 /// Decode an integer with an `nbits` prefix starting at `pos`.
 fn decode_hpack_int(Vec<byte> raw, int pos, int nbits) -> Result<HpackInt, HttpError> {
-    if pos >= len(raw) {
+    if pos >= raw.len() {
         http_err_bad_response()?;
     }
     let two_n = hpack_pow2(nbits);
@@ -130,7 +130,7 @@ fn decode_hpack_int(Vec<byte> raw, int pos, int nbits) -> Result<HpackInt, HttpE
     let m = 1;
     let cont = 1;
     while cont == 1 {
-        if pos >= len(raw) {
+        if pos >= raw.len() {
             http_err_bad_response()?;
         }
         b = hpack_u8(raw, pos);
@@ -422,7 +422,7 @@ fn decode_hpack_huffman(Vec<byte> raw) -> Result<string, HttpError> {
     let cur = 0;
     let nbits = 0;
     let i = 0;
-    while i < len(raw) {
+    while i < raw.len() {
         let b = hpack_u8(raw, i);
         let sh = 7;
         while sh >= 0 {
@@ -473,7 +473,7 @@ fn encode_hpack_huffman(Vec<byte> raw) -> Vec<byte> {
     let acc = 0;
     let nbits = 0;
     let i = 0;
-    while i < len(raw) {
+    while i < raw.len() {
         let ch = hpack_u8(raw, i);
         let code = codes[ch];
         let blen = lens[ch];
@@ -504,17 +504,17 @@ fn encode_hpack_huffman(Vec<byte> raw) -> Vec<byte> {
 fn encode_hpack_string(Vec<byte> out, string s) {
     let b = to_bytes(s);
     let huff = encode_hpack_huffman(b);
-    if len(huff) < len(b) {
-        encode_hpack_int(out, len(huff), 7, 1);
+    if huff.len() < b.len() {
+        encode_hpack_int(out, huff.len(), 7, 1);
         let i = 0;
-        while i < len(huff) {
+        while i < huff.len() {
             out.push(huff[i]);
             i = i + 1;
         }
     } else {
-        encode_hpack_int(out, len(b), 7, 0);
+        encode_hpack_int(out, b.len(), 7, 0);
         let i = 0;
-        while i < len(b) {
+        while i < b.len() {
             out.push(b[i]);
             i = i + 1;
         }
@@ -523,7 +523,7 @@ fn encode_hpack_string(Vec<byte> out, string s) {
 
 /// Decode a string literal at `pos`. Huffman (H=1) uses RFC 7541 Appendix B.
 fn decode_hpack_string(Vec<byte> raw, int pos) -> Result<HpackStr, HttpError> {
-    if pos >= len(raw) {
+    if pos >= raw.len() {
         http_err_bad_response()?;
     }
     let first = hpack_u8(raw, pos);
@@ -531,7 +531,7 @@ fn decode_hpack_string(Vec<byte> raw, int pos) -> Result<HpackStr, HttpError> {
     let di = decode_hpack_int(raw, pos, 7)?;
     let n = di.value;
     let start = di.next;
-    if start + n > len(raw) {
+    if start + n > raw.len() {
         http_err_bad_response()?;
     }
     let slice = bytes_slice(raw, start, start + n);
@@ -804,16 +804,16 @@ fn hpack_static_name_index(string name) -> int {
 }
 
 fn hpack_entry_octets(string name, string value) -> int {
-    return len(to_bytes(name)) + len(to_bytes(value)) + 32;
+    return to_bytes(name).len() + to_bytes(value).len() + 32;
 }
 
 fn hpack_table_evict_oldest(HpackTable t) {
-    if len(t.names) > 0 {
+    if t.names.len() > 0 {
         let drop = hpack_entry_octets(t.names[0], t.values[0]);
         let nn: Vec<string> = Vec::new();
         let vv: Vec<string> = Vec::new();
         let i = 1;
-        while i < len(t.names) {
+        while i < t.names.len() {
             nn.push(t.names[i]);
             vv.push(t.values[i]);
             i = i + 1;
@@ -870,7 +870,7 @@ fn hpack_table_resize(HpackTable t, int cap) {
 }
 
 fn hpack_dynamic_match(HpackTable t, string name, string value) -> int {
-    let count = len(t.names);
+    let count = t.names.len();
     let found = 0;
     let i = 0;
     while i < count {
@@ -889,7 +889,7 @@ fn hpack_name_index(HpackTable t, string name) -> int {
     if si != 0 {
         return si;
     }
-    let count = len(t.names);
+    let count = t.names.len();
     let found = 0;
     let i = 0;
     while i < count {
@@ -912,7 +912,7 @@ fn hpack_lookup_name(HpackTable t, int idx) -> Result<string, HttpError> {
         }
         return sname;
     }
-    let count = len(t.names);
+    let count = t.names.len();
     let di = idx - 62;
     if di >= count {
         http_err_bad_response()?;
@@ -931,7 +931,7 @@ fn hpack_lookup_value(HpackTable t, int idx) -> Result<string, HttpError> {
         }
         return hpack_static_value(idx);
     }
-    let count = len(t.names);
+    let count = t.names.len();
     let di = idx - 62;
     if di >= count {
         http_err_bad_response()?;
@@ -993,7 +993,7 @@ fn decode_header_block_with(Vec<byte> raw, HpackTable t) -> Result<Headers, Http
     let h = Headers::new();
     let pos = 0;
     let seen = 0;
-    while pos < len(raw) {
+    while pos < raw.len() {
         let b = hpack_u8(raw, pos);
         if b / 128 == 1 {
             seen = 1;

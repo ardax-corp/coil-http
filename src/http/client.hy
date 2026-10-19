@@ -102,8 +102,8 @@ impl Client {
         let headers = req.headers_val();
         let body = req.body_val();
         let u = parse_url(url)?;
-        let bl = len(body);
-        let n = len(headers.names);
+        let bl = body.len();
+        let n = headers.names.len();
         let keep = self.use_pool;
         if n > 0 {
             if headers_have_crlf(headers.names, headers.values) == 1 {

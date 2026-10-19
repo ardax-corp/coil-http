@@ -22,7 +22,7 @@ fn push_u(Vec<byte> v, int n) {
 test("unmasked hello text") {
     let empty: Vec<byte> = Vec::new();
     let wire = encode_ws_frame(1, ws_opcode_text(), empty, to_bytes("Hello"));
-    assert!(len(wire) == 7, "len");
+    assert!(wire.len() == 7, "len");
     assert!(wire[0] as int == 129, "fin text");
     assert!(wire[1] as int == 5, "unmasked len");
     let f = match decode_ws_frame(wire) {
@@ -32,7 +32,7 @@ test("unmasked hello text") {
     assert!(f.fin == 1, "fin");
     assert!(f.opcode == 1, "opcode");
     assert!(f.masked == 0, "mask");
-    assert!(len(f.payload) == 5, "payload");
+    assert!(f.payload.len() == 5, "payload");
     assert!(f.payload[0] as int == 72, "H");
 }
 
@@ -43,7 +43,7 @@ test("masked hello rfc 6455") {
     push_u(key, 33);
     push_u(key, 61);
     let wire = encode_ws_frame(1, ws_opcode_text(), key, to_bytes("Hello"));
-    assert!(len(wire) == 11, "masked len");
+    assert!(wire.len() == 11, "masked len");
     assert!(wire[0] as int == 129, "fin text");
     assert!(wire[1] as int == 133, "mask+5");
     assert!(wire[2] as int == 55, "k0");
@@ -57,7 +57,7 @@ test("masked hello rfc 6455") {
         Result::Err(_) => panic "decode masked",
     };
     assert!(f.masked == 1, "masked");
-    assert!(len(f.payload) == 5, "unmasked payload");
+    assert!(f.payload.len() == 5, "unmasked payload");
     assert!(f.payload[0] as int == 72, "H");
     assert!(f.payload[4] as int == 111, "o");
 }
@@ -72,13 +72,13 @@ test("extended 16-bit length") {
     let empty: Vec<byte> = Vec::new();
     let wire = encode_ws_frame(1, ws_opcode_bin(), empty, payload);
     assert!(wire[1] as int == 126, "126");
-    assert!(len(wire) == 4 + 256, "ext16");
+    assert!(wire.len() == 4 + 256, "ext16");
     let f = match decode_ws_frame(wire) {
         Result::Ok(v) => v,
         Result::Err(_) => panic "decode 16",
     };
-    assert!(len(f.payload) == 256, "payload 256");
-    assert!(ws_frame_wire_len(wire) == len(wire), "wire len");
+    assert!(f.payload.len() == 256, "payload 256");
+    assert!(ws_frame_wire_len(wire) == wire.len(), "wire len");
 }
 
 test("ping opcode") {
@@ -131,7 +131,7 @@ test("pong opcode unmasked") {
     };
     assert!(f.opcode == 10, "pong");
     assert!(f.masked == 0, "unmasked");
-    assert!(len(f.payload) == 5, "echo");
+    assert!(f.payload.len() == 5, "echo");
     assert!(f.payload[0] as int == 72, "H");
 }
 
@@ -145,7 +145,7 @@ test("close empty and code 1000") {
         Result::Err(_) => panic "decode close empty",
     };
     assert!(f.opcode == 8, "close");
-    assert!(len(f.payload) == 0, "no reason");
+    assert!(f.payload.len() == 0, "no reason");
     let code: Vec<byte> = Vec::new();
     push_u(code, 3);
     push_u(code, 232);
@@ -162,7 +162,7 @@ test("close empty and code 1000") {
     };
     assert!(g.opcode == 8, "opcode");
     assert!(g.masked == 1, "client mask");
-    assert!(len(g.payload) == 2, "code bytes");
+    assert!(g.payload.len() == 2, "code bytes");
     assert!(g.payload[0] as int == 3, "1000 hi");
     assert!(g.payload[1] as int == 232, "1000 lo");
 }
@@ -202,24 +202,24 @@ test("7-bit max and 16-bit min lengths") {
     let p125 = fill_bytes(125, 65);
     let w125 = encode_ws_frame(1, ws_opcode_text(), empty, p125);
     assert!(w125[1] as int == 125, "7-bit");
-    assert!(len(w125) == 2 + 125, "no ext");
+    assert!(w125.len() == 2 + 125, "no ext");
     let f125 = match decode_ws_frame(w125) {
         Result::Ok(v) => v,
         Result::Err(_) => panic "125",
     };
-    assert!(len(f125.payload) == 125, "payload 125");
-    assert!(ws_frame_wire_len(w125) == len(w125), "wire 125");
+    assert!(f125.payload.len() == 125, "payload 125");
+    assert!(ws_frame_wire_len(w125) == w125.len(), "wire 125");
     let p126 = fill_bytes(126, 66);
     let w126 = encode_ws_frame(1, ws_opcode_text(), empty, p126);
     assert!(w126[1] as int == 126, "16-bit form");
     assert!(w126[2] as int == 0, "len hi");
     assert!(w126[3] as int == 126, "len lo");
-    assert!(len(w126) == 4 + 126, "ext16");
+    assert!(w126.len() == 4 + 126, "ext16");
     let f126 = match decode_ws_frame(w126) {
         Result::Ok(v) => v,
         Result::Err(_) => panic "126",
     };
-    assert!(len(f126.payload) == 126, "payload 126");
+    assert!(f126.payload.len() == 126, "payload 126");
 }
 
 test("64-bit length form") {
@@ -232,15 +232,15 @@ test("64-bit length form") {
     assert!(wire[7] as int == 1, "65536 hi");
     assert!(wire[8] as int == 0, "mid");
     assert!(wire[9] as int == 0, "lo");
-    assert!(len(wire) == 10 + n, "ext64");
+    assert!(wire.len() == 10 + n, "ext64");
     let f = match decode_ws_frame(wire) {
         Result::Ok(v) => v,
         Result::Err(_) => panic "decode 64",
     };
-    assert!(len(f.payload) == n, "payload 64k");
+    assert!(f.payload.len() == n, "payload 64k");
     assert!(f.payload[0] as int == 67, "first");
     assert!(f.payload[n - 1] as int == 67, "last");
-    assert!(ws_frame_wire_len(wire) == len(wire), "wire 64");
+    assert!(ws_frame_wire_len(wire) == wire.len(), "wire 64");
     let key: Vec<byte> = Vec::new();
     push_u(key, 9);
     push_u(key, 8);
@@ -248,13 +248,13 @@ test("64-bit length form") {
     push_u(key, 6);
     let masked = encode_ws_frame(1, ws_opcode_bin(), key, payload);
     assert!(masked[1] as int == 255, "mask+127");
-    assert!(len(masked) == 14 + n, "mask+ext64");
+    assert!(masked.len() == 14 + n, "mask+ext64");
     let g = match decode_ws_frame(masked) {
         Result::Ok(v) => v,
         Result::Err(_) => panic "decode masked 64",
     };
     assert!(g.masked == 1, "masked");
-    assert!(len(g.payload) == n, "unmasked 64k");
+    assert!(g.payload.len() == n, "unmasked 64k");
     assert!(g.payload[0] as int == 67, "C");
 }
 
@@ -268,7 +268,7 @@ test("fin zero continuation opcode") {
     };
     assert!(f.fin == 0, "fin");
     assert!(f.opcode == 0, "cont");
-    assert!(len(f.payload) == 2, "ab");
+    assert!(f.payload.len() == 2, "ab");
 }
 
 test("decode ignores trailing bytes") {
@@ -280,7 +280,7 @@ test("decode ignores trailing bytes") {
         Result::Ok(v) => v,
         Result::Err(_) => panic "trailer",
     };
-    assert!(len(f.payload) == 2, "payload");
+    assert!(f.payload.len() == 2, "payload");
     assert!(ws_frame_wire_len(wire) == 4, "first frame only");
 }
 

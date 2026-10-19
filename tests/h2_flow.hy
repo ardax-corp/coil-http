@@ -40,12 +40,12 @@ use http::server::{HttpHandler, h2_dispatch_ready};
 fn cat_bytes(Vec<byte> a, Vec<byte> b) -> Vec<byte> {
     let out: Vec<byte> = Vec::new();
     let i = 0;
-    while i < len(a) {
+    while i < a.len() {
         out.push(a[i]);
         i = i + 1;
     }
     let j = 0;
-    while j < len(b) {
+    while j < b.len() {
         out.push(b[j]);
         j = j + 1;
     }
@@ -64,11 +64,11 @@ fn boot_session() -> H2Session {
 }
 
 fn bytes_eq(Vec<byte> a, Vec<byte> b) -> int {
-    if len(a) != len(b) {
+    if a.len() != b.len() {
         return 0;
     }
     let i = 0;
-    while i < len(a) {
+    while i < a.len() {
         if a[i] != b[i] {
             return 0;
         }
@@ -81,7 +81,7 @@ fn data_payload_len(Vec<byte> wire) -> int {
     let total = 0;
     let rest = wire;
     let guard = 0;
-    while len(rest) >= 9 {
+    while rest.len() >= 9 {
         if guard > 64 {
             return total;
         }
@@ -96,11 +96,11 @@ fn data_payload_len(Vec<byte> wire) -> int {
             },
         };
         if f.typ == frame_type_data() {
-            total = total + len(f.payload);
+            total = total + f.payload.len();
         }
         let next: Vec<byte> = Vec::new();
         let i = n;
-        while i < len(rest) {
+        while i < rest.len() {
             next.push(rest[i]);
             i = i + 1;
         }
@@ -114,7 +114,7 @@ fn count_type(Vec<byte> wire, int typ) -> int {
     let total = 0;
     let rest = wire;
     let guard = 0;
-    while len(rest) >= 9 {
+    while rest.len() >= 9 {
         if guard > 64 {
             return total;
         }
@@ -133,7 +133,7 @@ fn count_type(Vec<byte> wire, int typ) -> int {
         }
         let next: Vec<byte> = Vec::new();
         let i = n;
-        while i < len(rest) {
+        while i < rest.len() {
             next.push(rest[i]);
             i = i + 1;
         }
@@ -175,7 +175,7 @@ fn digits(string s) -> int {
     let b = to_bytes(s);
     let v = 0;
     let i = 0;
-    while i < len(b) {
+    while i < b.len() {
         v = v * 10 + ((b[i] as int) - (("0" as byte) as int));
         i = i + 1;
     }

@@ -72,7 +72,7 @@ fn main() {
     if t1.opcode != ws_opcode_text() {
         panic "not text";
     }
-    if len(t1.payload) != 5 {
+    if t1.payload.len() != 5 {
         panic "text len";
     }
     match ws_send_bin(c, to_bytes("ok")) {

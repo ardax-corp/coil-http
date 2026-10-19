@@ -71,7 +71,7 @@ impl ConnPool {
     pub fn acquire(Url u) -> Result<HttpConn, HttpError> {
         let key = self.pool_key(u);
         let i = 0;
-        let n = len(self.keys);
+        let n = self.keys.len();
         while i < n {
             if self.keys[i] == key {
                 let c = self.conns[i];
@@ -91,7 +91,7 @@ impl ConnPool {
     }
 
     pub fn release(Url u, HttpConn c) {
-        if len(self.conns) >= self.max_size {
+        if self.conns.len() >= self.max_size {
             close_conn(c);
             return;
         }
@@ -106,7 +106,7 @@ impl ConnPool {
 
     pub fn clear() {
         let i = 0;
-        while i < len(self.conns) {
+        while i < self.conns.len() {
             close_conn(self.conns[i]);
             i = i + 1;
         }

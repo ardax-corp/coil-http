@@ -112,7 +112,7 @@ fn main() {
             if r.status != 201 {
                 panic "status";
             }
-            if len(r.body) != 12 {
+            if r.body.len() != 12 {
                 panic "body";
             }
             write_all(stdout(), to_bytes("status=201\nbody=from-handler\nok"));

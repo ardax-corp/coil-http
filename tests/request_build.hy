@@ -25,7 +25,7 @@ test("build get request has host and connection close") {
         Result::Ok(m) => m,
         Result::Err(_) => panic "build",
     };
-    if len(msg) < 40 { panic "short"; }
+    if msg.len() < 40 { panic "short"; }
     let getb = to_bytes("GET /hi HTTP/1.1");
     let hostb = to_bytes("Host: example.com");
     let closeb = to_bytes("Connection: close");
@@ -89,7 +89,7 @@ test("post body concat grows by body length") {
     body.push(65);
     body.push(66);
     let msg = concat_bytes(head, body);
-    if len(msg) != len(head) + 2 { panic "concat len"; }
+    if msg.len() != head.len() + 2 { panic "concat len"; }
 }
 
 test("non-default http port in Host header") {

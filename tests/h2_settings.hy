@@ -30,7 +30,7 @@ test("settings payload roundtrip") {
     s.add(4, 65535);
     s.add(3, 100);
     let raw = encode_settings_payload(s);
-    assert!(len(raw) == 12, "two params");
+    assert!(raw.len() == 12, "two params");
     let g = match decode_settings_payload(raw) {
         Result::Ok(v) => v,
         Result::Err(_) => panic "decode settings",
@@ -52,7 +52,7 @@ test("settings frame wraps payload") {
     };
     assert!(g.typ == frame_type_settings(), "type");
     assert!(g.stream_id == 0, "stream 0");
-    assert!(len(g.payload) == 6, "one param");
+    assert!(g.payload.len() == 6, "one param");
     let p = match decode_settings_payload(g.payload) {
         Result::Ok(v) => v,
         Result::Err(_) => panic "payload",
@@ -64,7 +64,7 @@ test("settings frame wraps payload") {
 test("settings ack has empty payload") {
     let f = settings_ack_frame();
     assert!(f.flags == flag_ack(), "ack");
-    assert!(len(f.payload) == 0, "empty");
+    assert!(f.payload.len() == 0, "empty");
     let g = match decode_settings_payload(f.payload) {
         Result::Ok(v) => v,
         Result::Err(_) => panic "ack decode",
@@ -90,7 +90,7 @@ test("window update payload roundtrip") {
         Result::Ok(v) => v,
         Result::Err(_) => panic "encode wu",
     };
-    assert!(len(raw) == 4, "4 bytes");
+    assert!(raw.len() == 4, "4 bytes");
     let inc = match decode_window_update_payload(raw) {
         Result::Ok(v) => v,
         Result::Err(_) => panic "decode wu",
@@ -149,7 +149,7 @@ test("window update frame roundtrip") {
 
 test("goaway last stream and error code") {
     let raw = encode_goaway_payload(7, 1);
-    assert!(len(raw) == 8, "8 bytes");
+    assert!(raw.len() == 8, "8 bytes");
     let g = match decode_goaway_payload(raw) {
         Result::Ok(v) => v,
         Result::Err(_) => panic "goaway",
@@ -201,7 +201,7 @@ test("headers frame GET path slash via HPACK") {
     assert!(f.typ == frame_type_headers(), "headers");
     assert!(f.stream_id == 1, "sid");
     assert!(f.flags == flag_end_headers() + flag_end_stream(), "flags");
-    assert!(len(f.payload) == 2, "two indexed");
+    assert!(f.payload.len() == 2, "two indexed");
     assert!((f.payload[0] as int) == 130, "index 2");
     assert!((f.payload[1] as int) == 132, "index 4");
     let g = match headers_from_frame(f) {
@@ -241,13 +241,13 @@ test("settings ack survives frame wire roundtrip") {
     assert!(g.typ == frame_type_settings(), "settings");
     assert!(g.flags == flag_ack(), "ack flag");
     assert!(g.stream_id == 0, "stream 0");
-    assert!(len(g.payload) == 0, "empty");
+    assert!(g.payload.len() == 0, "empty");
 }
 
 test("empty settings payload encodes zero bytes") {
     let s = H2Settings::new();
     let raw = encode_settings_payload(s);
-    assert!(len(raw) == 0, "empty");
+    assert!(raw.len() == 0, "empty");
     let g = match decode_settings_payload(raw) {
         Result::Ok(v) => v,
         Result::Err(_) => panic "empty decode",
@@ -260,7 +260,7 @@ test("settings value uses full 32-bit field") {
     // 16777216 needs the high byte of the 4-byte SETTINGS value.
     s.add(5, 16777216);
     let raw = encode_settings_payload(s);
-    assert!(len(raw) == 6, "one param");
+    assert!(raw.len() == 6, "one param");
     assert!((raw[2] as int) == 1, "value hi");
     assert!((raw[3] as int) == 0, "mid");
     assert!((raw[4] as int) == 0, "mid2");

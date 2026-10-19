@@ -62,7 +62,7 @@ fn make_chunk() -> Vec<byte> {
 }
 
 fn leftover_take(HttpConn c, int n) -> Vec<byte> {
-    let have = len(c.leftover);
+    let have = c.leftover.len();
     let take = n;
     if take > have {
         take = have;
@@ -79,7 +79,7 @@ fn leftover_take(HttpConn c, int n) -> Vec<byte> {
 
 fn read_n(HttpConn c, int n) -> Result<Vec<byte>, HttpError> {
     let out = leftover_take(c, n);
-    let need = n - len(out);
+    let need = n - out.len();
     if need == 0 {
         return out;
     }
@@ -121,10 +121,10 @@ fn read_crlf_line(HttpConn c) -> Result<Vec<byte>, HttpError> {
     let lf: byte = "\n";
     while guard < 4096 {
         let b = read_n(c, 1)?;
-        if len(acc) > 0 {
-            if acc[len(acc) - 1] == cr {
+        if acc.len() > 0 {
+            if acc[acc.len() - 1] == cr {
                 if b[0] == lf {
-                    return bytes_slice_resp(acc, 0, len(acc) - 1);
+                    return bytes_slice_resp(acc, 0, acc.len() - 1);
                 }
             }
         }
@@ -143,7 +143,7 @@ fn read_chunked_wire(HttpConn c) -> Result<Vec<byte>, HttpError> {
     while keep == 1 {
         let line = read_crlf_line(c)?;
         let i = 0;
-        while i < len(line) {
+        while i < line.len() {
             acc.push(line[i]);
             i = i + 1;
         }
@@ -155,13 +155,13 @@ fn read_chunked_wire(HttpConn c) -> Result<Vec<byte>, HttpError> {
             while trail == 1 {
                 let t = read_crlf_line(c)?;
                 let j = 0;
-                while j < len(t) {
+                while j < t.len() {
                     acc.push(t[j]);
                     j = j + 1;
                 }
                 acc.push(cr);
                 acc.push(lf);
-                if len(t) == 0 {
+                if t.len() == 0 {
                     trail = 0;
                 }
             }
@@ -169,12 +169,12 @@ fn read_chunked_wire(HttpConn c) -> Result<Vec<byte>, HttpError> {
         } else {
             let data = read_n(c, size)?;
             let k = 0;
-            while k < len(data) {
+            while k < data.len() {
                 acc.push(data[k]);
                 k = k + 1;
             }
             let nl = read_n(c, 2)?;
-            if len(nl) < 2 {
+            if nl.len() < 2 {
                 http_err_bad_response()?;
             }
             if nl[0] != cr {
@@ -200,7 +200,7 @@ fn append_read(Vec<byte> acc, Vec<byte> chunk, int nread) {
 
 /// Read until CRLFCRLF, then exactly Content-Length body bytes. Extra bytes stay on `c`.
 fn read_http_message(HttpConn c) -> Result<Vec<byte>, HttpError> {
-    let acc = leftover_take(c, len(c.leftover));
+    let acc = leftover_take(c, c.leftover.len());
     let chunk = make_chunk();
     let guard = 0;
     let done = 0;
@@ -238,7 +238,7 @@ fn read_http_message(HttpConn c) -> Result<Vec<byte>, HttpError> {
                 let got = 0;
                 match nopt {
                     Option::None => {
-                        if len(acc) > 0 {
+                        if acc.len() > 0 {
                             done = 1;
                         }
                     },
@@ -249,7 +249,7 @@ fn read_http_message(HttpConn c) -> Result<Vec<byte>, HttpError> {
                 };
                 if got == 1 {
                     if nread == 0 {
-                        if len(acc) > 0 {
+                        if acc.len() > 0 {
                             done = 1;
                         } else {
                             match wait_readable(c.inner) {
@@ -276,7 +276,7 @@ fn read_http_message(HttpConn c) -> Result<Vec<byte>, HttpError> {
         http_fail_unit()?;
     }
     let head = bytes_slice_resp(acc, 0, sep + 4);
-    let extra = bytes_slice_resp(acc, sep + 4, len(acc));
+    let extra = bytes_slice_resp(acc, sep + 4, acc.len());
     c.leftover = extra;
     let header_bytes = bytes_slice_resp(acc, 0, sep);
     let body_len = header_block_body_len(header_bytes)?;

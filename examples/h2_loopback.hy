@@ -45,11 +45,11 @@ fn server_thread(Sender tx) {
 
 fn body_is(Vec<byte> b, string s) -> int {
     let want = to_bytes(s);
-    if len(b) != len(want) {
+    if b.len() != want.len() {
         return 0;
     }
     let i = 0;
-    while i < len(b) {
+    while i < b.len() {
         if b[i] != want[i] {
             return 0;
         }

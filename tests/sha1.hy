@@ -12,7 +12,7 @@ fn expect_byte(Vec<byte> d, int i, int want, string tag) {
 test("sha1 empty") {
     let empty: Vec<byte> = Vec::new();
     let d = sha1(empty);
-    assert!(len(d) == 20, "digest len");
+    assert!(d.len() == 20, "digest len");
     // da39a3ee5e6b4b0d3255bfef95601890afd80709
     expect_byte(d, 0, 218, "e0");
     expect_byte(d, 1, 57, "e1");

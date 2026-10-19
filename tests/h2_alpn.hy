@@ -28,7 +28,7 @@ fn must_url(string s) -> Url {
 fn bytes_slice_after(Vec<byte> b, int start) -> Vec<byte> {
     let out: Vec<byte> = Vec::new();
     let i = start;
-    while i < len(b) {
+    while i < b.len() {
         out.push(b[i]);
         i = i + 1;
     }
@@ -65,13 +65,13 @@ test("https custom port prior knowledge wire uses https scheme") {
     let u = must_url("https://127.0.0.1:8443/secure");
     let wire = h2_prior_knowledge_get(u);
     let pref = connection_preface();
-    let after = bytes_slice_after(wire, len(pref));
+    let after = bytes_slice_after(wire, pref.len());
     let settings = match decode_frame(after) {
         Result::Ok(v) => v,
         Result::Err(_) => panic "settings",
     };
     assert!(settings.typ == frame_type_settings(), "settings");
-    let settings_len = 9 + len(settings.payload);
+    let settings_len = 9 + settings.payload.len();
     let rest = bytes_slice_after(after, settings_len);
     let headers = match decode_frame(rest) {
         Result::Ok(v) => v,

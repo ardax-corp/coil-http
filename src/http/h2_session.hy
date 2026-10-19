@@ -80,7 +80,7 @@ fn h2_stream_cap() -> int {
 
 fn h2_append_bytes(Vec<byte> out, Vec<byte> extra) {
     let i = 0;
-    while i < len(extra) {
+    while i < extra.len() {
         out.push(extra[i]);
         i = i + 1;
     }
@@ -262,7 +262,7 @@ impl H2Session {
 
     pub fn find_id(int sid) -> int {
         let i = 0;
-        let n = len(self.ids);
+        let n = self.ids.len();
         while i < n {
             if self.ids[i] == sid {
                 return i;
@@ -278,7 +278,7 @@ impl H2Session {
 
     pub fn queue_bytes(Vec<byte> wire) {
         let i = 0;
-        while i < len(wire) {
+        while i < wire.len() {
             self.outgoing.push(wire[i]);
             i = i + 1;
         }
@@ -297,7 +297,7 @@ impl H2Session {
 
     pub fn try_preface() -> Result<(), HttpError> {
         let want = connection_preface();
-        let have = len(self.buf);
+        let have = self.buf.len();
         let check = have;
         if check > 24 {
             check = 24;
@@ -320,7 +320,7 @@ impl H2Session {
     fn adjust_windows(Vec<int> wins, int delta) -> Result<(), HttpError> {
         let max = h2_max_window();
         let i = 0;
-        let n = len(wins);
+        let n = wins.len();
         while i < n {
             if delta > 0 {
                 if wins[i] > max - delta {
@@ -421,7 +421,7 @@ impl H2Session {
             return self.fail_conn(h2_err_protocol())?;
         }
         if f.flags % 2 == 1 {
-            if len(f.payload) != 0 {
+            if f.payload.len() != 0 {
                 return self.fail_conn(h2_err_frame_size())?;
             }
             self.settings_done = 1;
@@ -448,7 +448,7 @@ impl H2Session {
         self.ids.push(sid);
         self.ended.push(end_stream);
         self.hnum.push(hnum);
-        self.bstart.push(len(self.blob));
+        self.bstart.push(self.blob.len());
         self.blen.push(0);
         self.send_win.push(self.peer_window);
         self.recv_win.push(self.local_window);
@@ -519,7 +519,7 @@ impl H2Session {
         let nn: Vec<string> = Vec::new();
         let vv: Vec<string> = Vec::new();
         let i = 0;
-        let ns = len(self.ids);
+        let ns = self.ids.len();
         while i < ns {
             if i == idx {
                 let k = 0;
@@ -542,7 +542,7 @@ impl H2Session {
         let nn: Vec<string> = Vec::new();
         let vv: Vec<string> = Vec::new();
         let i = 0;
-        let ns = len(self.ids);
+        let ns = self.ids.len();
         while i < ns {
             if i == idx {
                 let k = 0;
@@ -689,7 +689,7 @@ impl H2Session {
         self.cont_end_stream = f.flags % 2;
         self.cont_kind = 1;
         self.cont_promised = 0;
-        self.cont_buf = bytes_slice(f.payload, 0, len(f.payload));
+        self.cont_buf = bytes_slice(f.payload, 0, f.payload.len());
         return ();
     }
 
@@ -710,7 +710,7 @@ impl H2Session {
         self.cont_end_stream = 0;
         self.cont_kind = 2;
         self.cont_promised = p.promised_id;
-        self.cont_buf = bytes_slice(p.block, 0, len(p.block));
+        self.cont_buf = bytes_slice(p.block, 0, p.block.len());
         return ();
     }
 
@@ -722,7 +722,7 @@ impl H2Session {
             return self.fail_conn(h2_err_protocol())?;
         }
         let i = 0;
-        while i < len(f.payload) {
+        while i < f.payload.len() {
             self.cont_buf.push(f.payload[i]);
             i = i + 1;
         }
@@ -753,9 +753,9 @@ impl H2Session {
         let newb: Vec<byte> = Vec::new();
         let starts: Vec<int> = Vec::new();
         let i = 0;
-        let n = len(self.ids);
+        let n = self.ids.len();
         while i < n {
-            starts.push(len(newb));
+            starts.push(newb.len());
             let off = self.bstart[i];
             let k = 0;
             let lim = self.blen[i];
@@ -765,7 +765,7 @@ impl H2Session {
             }
             if i == idx {
                 let p = 0;
-                while p < len(payload) {
+                while p < payload.len() {
                     newb.push(payload[p]);
                     p = p + 1;
                 }
@@ -777,7 +777,7 @@ impl H2Session {
             self.bstart[j] = starts[j];
             j = j + 1;
         }
-        self.blen[idx] = self.blen[idx] + len(payload);
+        self.blen[idx] = self.blen[idx] + payload.len();
         self.blob = newb;
     }
 
@@ -813,7 +813,7 @@ impl H2Session {
         if self.ended[idx] == 1 {
             return self.fail_conn(h2_err_protocol())?;
         }
-        self.note_recv(idx, len(f.payload))?;
+        self.note_recv(idx, f.payload.len())?;
         self.append_body(idx, f.payload);
         if f.flags % 2 == 1 {
             self.ended[idx] = 1;
@@ -826,7 +826,7 @@ impl H2Session {
         if f.stream_id != 0 {
             return self.fail_conn(h2_err_protocol())?;
         }
-        if len(f.payload) != 8 {
+        if f.payload.len() != 8 {
             return self.fail_conn(h2_err_frame_size())?;
         }
         if f.flags % 2 == 0 {
@@ -857,7 +857,7 @@ impl H2Session {
     }
 
     fn on_window(H2Frame f) -> Result<(), HttpError> {
-        if len(f.payload) != 4 {
+        if f.payload.len() != 4 {
             return self.fail_conn(h2_err_frame_size())?;
         }
         let inc = match decode_window_update_payload(f.payload) {
@@ -912,7 +912,7 @@ impl H2Session {
     }
 
     pub fn on_frame(H2Frame f) -> Result<(), HttpError> {
-        if len(f.payload) > self.local_max_frame {
+        if f.payload.len() > self.local_max_frame {
             return self.fail_conn(h2_err_frame_size())?;
         }
         if self.cont_on == 1 {
@@ -968,7 +968,7 @@ impl H2Session {
             http_err_bad_response()?;
         }
         let i = 0;
-        while i < len(chunk) {
+        while i < chunk.len() {
             self.buf.push(chunk[i]);
             i = i + 1;
         }
@@ -986,7 +986,7 @@ impl H2Session {
             } else {
                 let slice = bytes_slice(self.buf, 0, n);
                 let f = decode_frame(slice)?;
-                self.buf = bytes_slice(self.buf, n, len(self.buf));
+                self.buf = bytes_slice(self.buf, n, self.buf.len());
                 self.on_frame(f)?;
             }
         }
@@ -1025,9 +1025,9 @@ impl H2Session {
         let newb: Vec<byte> = Vec::new();
         let starts: Vec<int> = Vec::new();
         let i = 0;
-        let ns = len(self.ids);
+        let ns = self.ids.len();
         while i < ns {
-            starts.push(len(newb));
+            starts.push(newb.len());
             let off = self.pstart[i];
             let lim = self.plen[i];
             let skip = 0;
@@ -1053,14 +1053,14 @@ impl H2Session {
 
     fn enqueue_send(int idx, Vec<byte> body, int es) {
         if self.plen[idx] == 0 {
-            self.pstart[idx] = len(self.pblob);
+            self.pstart[idx] = self.pblob.len();
         }
         let i = 0;
-        while i < len(body) {
+        while i < body.len() {
             self.pblob.push(body[i]);
             i = i + 1;
         }
-        self.plen[idx] = self.plen[idx] + len(body);
+        self.plen[idx] = self.plen[idx] + body.len();
         if es != 0 {
             self.pend_es[idx] = 1;
         }
@@ -1142,7 +1142,7 @@ impl H2Session {
 
     fn flush_all() {
         let i = 0;
-        let n = len(self.ids);
+        let n = self.ids.len();
         while i < n {
             self.flush_stream(i);
             i = i + 1;
@@ -1153,7 +1153,7 @@ impl H2Session {
         let nn: Vec<string> = Vec::new();
         let vv: Vec<string> = Vec::new();
         let i = 0;
-        let ns = len(self.ids);
+        let ns = self.ids.len();
         while i < ns {
             if i == idx {
                 let k = 0;
@@ -1194,7 +1194,7 @@ impl H2Session {
         }
         self.local_streams = self.local_streams + 1;
         let es = 0;
-        if len(body) == 0 {
+        if body.len() == 0 {
             es = 1;
         }
         self.push_slot(sid, 0, 0, 0, 0);
@@ -1204,7 +1204,7 @@ impl H2Session {
             self.local_es[idx] = 1;
             self.note_closed(idx);
         }
-        if len(body) > 0 {
+        if body.len() > 0 {
             self.enqueue_send(idx, body, 1);
             self.flush_stream(idx);
         }
@@ -1225,7 +1225,7 @@ impl H2Session {
             i = i + 1;
         }
         let es = 0;
-        if len(body) == 0 {
+        if body.len() == 0 {
             if trailers.count() == 0 {
                 es = 1;
             }
@@ -1238,7 +1238,7 @@ impl H2Session {
         if trailers.count() > 0 {
             self.save_trailer_block(idx, trailers);
         }
-        if len(body) > 0 {
+        if body.len() > 0 {
             let bes = 0;
             if trailers.count() == 0 {
                 bes = 1;
@@ -1251,14 +1251,14 @@ impl H2Session {
     }
 
     pub fn stream_count() -> int {
-        return len(self.ids);
+        return self.ids.len();
     }
 
     /// Drop finished streams so a long sequential session does not scan them.
     pub fn forget_ended() {
         let i = 0;
         let live = 0;
-        while i < len(self.ids) {
+        while i < self.ids.len() {
             if self.plen[i] > 0 {
                 return;
             }
@@ -1347,7 +1347,7 @@ impl H2Session {
         if i < 0 {
             http_err_bad_response()?;
         }
-        if i >= len(self.ids) {
+        if i >= self.ids.len() {
             http_err_bad_response()?;
         }
         return self.ids[i];
@@ -1362,14 +1362,14 @@ impl H2Session {
     }
 
     pub fn push_count() -> int {
-        return len(self.push_ids);
+        return self.push_ids.len();
     }
 
     pub fn push_promised_id(int i) -> Result<int, HttpError> {
         if i < 0 {
             http_err_bad_response()?;
         }
-        if i >= len(self.push_ids) {
+        if i >= self.push_ids.len() {
             http_err_bad_response()?;
         }
         return self.push_ids[i];
@@ -1378,7 +1378,7 @@ impl H2Session {
     pub fn push_headers(int promised_id) -> Result<Headers, HttpError> {
         let idx = 999999;
         let i = 0;
-        let n = len(self.push_ids);
+        let n = self.push_ids.len();
         while i < n {
             if self.push_ids[i] == promised_id {
                 idx = i;
@@ -1425,7 +1425,7 @@ fn h2_cat_out(Vec<byte> a, Vec<byte> b) -> Vec<byte> {
 }
 
 fn h2s_write(Stream s, Vec<byte> b) -> Result<(), HttpError> {
-    if len(b) == 0 {
+    if b.len() == 0 {
         return ();
     }
     match write_all(s, b) {

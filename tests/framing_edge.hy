@@ -46,7 +46,7 @@ test("decode chunked with trailer headers") {
         Result::Ok(b) => b,
         Result::Err(_) => panic "decode",
     };
-    assert!(len(out) == 5, "body ignores trailers");
+    assert!(out.len() == 5, "body ignores trailers");
     assert!(out[0] == ("h" as byte), "h");
 }
 
@@ -57,7 +57,7 @@ test("framed end includes trailers before pipelined bytes") {
         Result::Err(_) => panic "framed end",
     };
     let extra = to_bytes("NEXT");
-    assert!(end + len(extra) == len(raw), "end before NEXT");
+    assert!(end + extra.len() == raw.len(), "end before NEXT");
 }
 
 test("reject non-hex chunk size") {
@@ -84,7 +84,7 @@ test("parse response prefers chunked over content-length") {
         Result::Ok(v) => v,
         Result::Err(_) => panic "parse",
     };
-    assert!(len(r.body) == 5, "chunked body");
+    assert!(r.body.len() == 5, "chunked body");
 }
 
 test("encode empty body as zero chunk only") {
@@ -97,5 +97,5 @@ test("encode empty body as zero chunk only") {
         Result::Ok(b) => b,
         Result::Err(_) => panic "decode",
     };
-    assert!(len(out) == 0, "empty");
+    assert!(out.len() == 0, "empty");
 }
