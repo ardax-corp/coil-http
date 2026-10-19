@@ -1,5 +1,5 @@
 // HTTP/1.1 wire helpers shared by client and server.
-use io::{to_bytes};
+use string::{to_bytes};
 use conv::{int_to_dec};
 use http::url::{
     Headers,

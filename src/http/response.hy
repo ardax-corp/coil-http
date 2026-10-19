@@ -1,5 +1,5 @@
 // HTTP/1.1 response parse and builder.
-use io::{to_bytes};
+use string::{to_bytes};
 use ascii::{hex_digit, hex_val};
 use http::url::{
     HttpError,

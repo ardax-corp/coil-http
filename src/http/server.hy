@@ -1,5 +1,6 @@
 // HTTP/1.1 cleartext/TLS server.
-use io::{Stream, close as io_close, to_bytes};
+use io::{Stream, close as io_close};
+use string::{to_bytes};
 use io::net::tcp::{listen, local_addr};
 use tls::server::{enable as tls_server_enable, ServerOpts};
 use tls::{alpn_protocol};

@@ -16,7 +16,8 @@ use http::url::{
 use http::request::{build_request_head};
 use http::response::{Response, bytes_slice_resp, parse_response};
 use http::conn::{HttpConn, close_conn, read_http_message};
-use io::{Stream, close as io_close, read, to_bytes, IoError, wait_readable};
+use io::{Stream, close as io_close, read, IoError, wait_readable};
+use string::{to_bytes};
 use io::sync::{write_all};
 
 class H2Frame {

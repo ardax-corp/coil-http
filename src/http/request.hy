@@ -1,5 +1,5 @@
 // HTTP/1.1 request builders and client-side Request type.
-use io::{from_bytes, to_bytes};
+use string::{from_bytes, to_bytes};
 use conv::{int_to_dec};
 use http::url::{
     Headers,

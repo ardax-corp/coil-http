@@ -2,7 +2,7 @@
 // Encode uses Huffman (H=1) when the coded string is shorter; otherwise H=0.
 // Literals use incremental indexing (RFC 7541 §6.2.1) so a later block on the
 // same HpackTable can emit a dynamic index.
-use io::{from_bytes, to_bytes};
+use string::{from_bytes, to_bytes};
 use http::url::{
     HttpError,
     Headers,
