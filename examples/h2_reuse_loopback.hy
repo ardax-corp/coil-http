@@ -43,7 +43,7 @@ fn server_thread(Sender tx) {
 }
 
 fn body_ok(Vec<byte> b) -> int {
-    if len(b) != 2 {
+    if b.len() != 2 {
         return 0;
     }
     if b[0] != ("o" as byte) {

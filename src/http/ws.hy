@@ -124,7 +124,7 @@ fn ws_push_u64be(Vec<byte> out, int n) {
 fn ws_mask_apply(Vec<byte> payload, Vec<byte> key) -> Vec<byte> {
     let out: Vec<byte> = Vec::new();
     let i = 0;
-    while i < len(payload) {
+    while i < payload.len() {
         let x = (payload[i] as int) ^ (key[i % 4] as int);
         out.push(ws_u8(x));
         i = i + 1;
@@ -144,9 +144,9 @@ fn encode_ws_frame(int fin, int opcode, Vec<byte> mask_key, Vec<byte> payload) -
         b0 = b0 | 128;
     }
     ws_push_u8(out, b0);
-    let n = len(payload);
+    let n = payload.len();
     let masked = 0;
-    if len(mask_key) == 4 {
+    if mask_key.len() == 4 {
         masked = 128;
     }
     if n < 126 {
@@ -170,7 +170,7 @@ fn encode_ws_frame(int fin, int opcode, Vec<byte> mask_key, Vec<byte> payload) -
         data = ws_mask_apply(payload, mask_key);
     }
     let j = 0;
-    while j < len(data) {
+    while j < data.len() {
         out.push(data[j]);
         j = j + 1;
     }
@@ -183,7 +183,7 @@ fn ws_u8_at(Vec<byte> raw, int i) -> int {
 
 /// Parse the first complete WebSocket frame in `raw`. Extra bytes after it are ignored.
 fn decode_ws_frame(Vec<byte> raw) -> Result<WsFrame, HttpError> {
-    if len(raw) < 2 {
+    if raw.len() < 2 {
         http_err_bad_response()?;
     }
     let b0 = ws_u8_at(raw, 0);
@@ -199,14 +199,14 @@ fn decode_ws_frame(Vec<byte> raw) -> Result<WsFrame, HttpError> {
     let pos = 2;
     let n = llen;
     if llen == 126 {
-        if len(raw) < 4 {
+        if raw.len() < 4 {
             http_err_bad_response()?;
         }
         n = ws_u8_at(raw, 2) * ws_mod256() + ws_u8_at(raw, 3);
         pos = 4;
     }
     if llen == 127 {
-        if len(raw) < 10 {
+        if raw.len() < 10 {
             http_err_bad_response()?;
         }
         if ws_u8_at(raw, 2) != 0 {
@@ -229,7 +229,7 @@ fn decode_ws_frame(Vec<byte> raw) -> Result<WsFrame, HttpError> {
     }
     let key: Vec<byte> = Vec::new();
     if masked == 1 {
-        if len(raw) < pos + 4 {
+        if raw.len() < pos + 4 {
             http_err_bad_response()?;
         }
         key.push(raw[pos]);
@@ -238,7 +238,7 @@ fn decode_ws_frame(Vec<byte> raw) -> Result<WsFrame, HttpError> {
         key.push(raw[pos + 3]);
         pos = pos + 4;
     }
-    if len(raw) < pos + n {
+    if raw.len() < pos + n {
         http_err_bad_response()?;
     }
     let payload = bytes_slice_resp(raw, pos, pos + n);
@@ -250,7 +250,7 @@ fn decode_ws_frame(Vec<byte> raw) -> Result<WsFrame, HttpError> {
 
 /// Byte count of the first complete frame, or 0 if truncated.
 fn ws_frame_wire_len(Vec<byte> raw) -> int {
-    if len(raw) < 2 {
+    if raw.len() < 2 {
         return 0;
     }
     let b1 = ws_u8_at(raw, 1);
@@ -259,14 +259,14 @@ fn ws_frame_wire_len(Vec<byte> raw) -> int {
     let extra = 0;
     let n = llen;
     if llen == 126 {
-        if len(raw) < 4 {
+        if raw.len() < 4 {
             return 0;
         }
         extra = 2;
         n = ws_u8_at(raw, 2) * ws_mod256() + ws_u8_at(raw, 3);
     }
     if llen == 127 {
-        if len(raw) < 10 {
+        if raw.len() < 10 {
             return 0;
         }
         extra = 8;
@@ -277,7 +277,7 @@ fn ws_frame_wire_len(Vec<byte> raw) -> int {
         maskn = 4;
     }
     let total = 2 + extra + maskn + n;
-    if len(raw) < total {
+    if raw.len() < total {
         return 0;
     }
     return total;
@@ -295,17 +295,17 @@ fn ws_ascii_lower(int x) -> int {
 fn ws_contains_ci(string hay, string needle) -> int {
     let hb = to_bytes(hay);
     let nb = to_bytes(needle);
-    if len(nb) == 0 {
+    if nb.len() == 0 {
         return 1;
     }
-    if len(nb) > len(hb) {
+    if nb.len() > hb.len() {
         return 0;
     }
     let i = 0;
-    while i + len(nb) <= len(hb) {
+    while i + nb.len() <= hb.len() {
         let ok = 1;
         let j = 0;
-        while j < len(nb) {
+        while j < nb.len() {
             if ws_ascii_lower(hb[i + j] as int) != ws_ascii_lower(nb[j] as int) {
                 ok = 0;
             }
@@ -322,7 +322,7 @@ fn ws_contains_ci(string hay, string needle) -> int {
 fn ws_header_get_req(IncomingRequest req, string name) -> string {
     let h = req.headers_val();
     let i = 0;
-    while i < len(h.names) {
+    while i < h.names.len() {
         if header_name_eq_ci(h.names[i], name) == 1 {
             return h.values[i];
         }
@@ -333,7 +333,7 @@ fn ws_header_get_req(IncomingRequest req, string name) -> string {
 
 fn ws_header_get_resp(Response r, string name) -> string {
     let i = 0;
-    while i < len(r.header_names) {
+    while i < r.header_names.len() {
         if header_name_eq_ci(r.header_names[i], name) == 1 {
             return r.header_values[i];
         }
@@ -473,7 +473,7 @@ fn ws_send_close(WsConn c) -> Result<(), HttpError> {
 /// Blocking read that parks on WouldBlock (same pattern as HTTP/2).
 fn ws_read_n(HttpConn c, int n) -> Result<Vec<byte>, HttpError> {
     let out: Vec<byte> = Vec::new();
-    let have = len(c.leftover);
+    let have = c.leftover.len();
     let take = n;
     if take > have {
         take = have;
@@ -495,7 +495,7 @@ fn ws_read_n(HttpConn c, int n) -> Result<Vec<byte>, HttpError> {
         let empty: Vec<byte> = Vec::new();
         c.leftover = empty;
     }
-    let need = n - len(out);
+    let need = n - out.len();
     if need == 0 {
         return out;
     }
@@ -724,7 +724,7 @@ fn ws_connect_tls(string url, bool verify, string ca_pem) -> Result<WsConn, Http
         }
     }
     let s = ws_open_stream(u, verify, ca_pem)?;
-    let key = ws_new_key(len(to_bytes(url)) * 33 + u.port);
+    let key = ws_new_key(to_bytes(url).len() * 33 + u.port);
     return ws_handshake_client(HttpConn::wrap(s), u, key)?;
 }
 

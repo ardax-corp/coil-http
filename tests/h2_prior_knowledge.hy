@@ -25,7 +25,7 @@ fn must_url(string s) -> Url {
 fn bytes_slice_after(Vec<byte> b, int start) -> Vec<byte> {
     let out: Vec<byte> = Vec::new();
     let i = start;
-    while i < len(b) {
+    while i < b.len() {
         out.push(b[i]);
         i = i + 1;
     }
@@ -73,20 +73,20 @@ test("prior knowledge wire is preface settings then stream-1 headers") {
     let u = must_url("http://example.com:8080/hello");
     let wire = h2_prior_knowledge_get(u);
     let pref = connection_preface();
-    assert!(len(wire) > len(pref), "longer than preface");
+    assert!(wire.len() > pref.len(), "longer than preface");
     let i = 0;
-    while i < len(pref) {
+    while i < pref.len() {
         assert!(wire[i] == pref[i], "preface bytes");
         i = i + 1;
     }
-    let after = bytes_slice_after(wire, len(pref));
+    let after = bytes_slice_after(wire, pref.len());
     let settings = match decode_frame(after) {
         Result::Ok(v) => v,
         Result::Err(_) => panic "settings",
     };
     assert!(settings.typ == frame_type_settings(), "settings type");
     assert!(settings.stream_id == 0, "settings sid");
-    let settings_len = 9 + len(settings.payload);
+    let settings_len = 9 + settings.payload.len();
     let rest = bytes_slice_after(after, settings_len);
     let headers = match decode_frame(rest) {
         Result::Ok(v) => v,
@@ -107,13 +107,13 @@ test("prior knowledge settings then headers wire lengths") {
     let u = must_url("http://example.com/");
     let wire = h2_prior_knowledge_get(u);
     let pref = connection_preface();
-    let after = bytes_slice_after(wire, len(pref));
+    let after = bytes_slice_after(wire, pref.len());
     let settings = match decode_frame(after) {
         Result::Ok(v) => v,
         Result::Err(_) => panic "settings",
     };
     assert!(settings.flags == 0, "not ack");
-    assert!(len(settings.payload) == 0, "empty settings");
+    assert!(settings.payload.len() == 0, "empty settings");
     let rest = bytes_slice_after(after, 9);
     let headers = match decode_frame(rest) {
         Result::Ok(v) => v,

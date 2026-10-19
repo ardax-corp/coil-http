@@ -128,13 +128,13 @@ fn sha1_word_be(Vec<byte> b, int i) -> int {
 fn sha1_pad(Vec<byte> msg) -> Vec<byte> {
     let out: Vec<byte> = Vec::new();
     let i = 0;
-    while i < len(msg) {
+    while i < msg.len() {
         out.push(msg[i]);
         i = i + 1;
     }
-    let bitlen = len(msg) * 8;
+    let bitlen = msg.len() * 8;
     out.push(128);
-    while (len(out) % 64) != 56 {
+    while (out.len() % 64) != 56 {
         out.push(0);
     }
     out.push(0);
@@ -193,7 +193,7 @@ fn sha1(Vec<byte> msg) -> Vec<byte> {
     h.push(sha1_from_be(195, 210, 225, 240));
     let padded = sha1_pad(msg);
     let off = 0;
-    while off < len(padded) {
+    while off < padded.len() {
         sha1_process_block(h, padded, off);
         off = off + 64;
     }

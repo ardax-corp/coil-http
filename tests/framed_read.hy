@@ -11,7 +11,7 @@ test("framed end of response with content-length") {
         Result::Err(_) => panic "framed end",
     };
     let extra = to_bytes("EXTRA");
-    assert!(end + len(extra) == len(raw), "end before EXTRA");
+    assert!(end + extra.len() == raw.len(), "end before EXTRA");
     let first: Vec<byte> = Vec::new();
     let i = 0;
     while i < end {
@@ -23,7 +23,7 @@ test("framed end of response with content-length") {
         Result::Err(_) => panic "parse first",
     };
     assert!(r.status == 200, "status");
-    assert!(len(r.body) == 2, "body");
+    assert!(r.body.len() == 2, "body");
 }
 
 test("two concatenated responses keep only the first") {
@@ -42,7 +42,7 @@ test("two concatenated responses keep only the first") {
         Result::Ok(v) => v,
         Result::Err(_) => panic "parse",
     };
-    assert!(len(r.body) == 1, "first body");
+    assert!(r.body.len() == 1, "first body");
     assert!(r.body[0] == ("A" as byte), "body A");
 }
 
@@ -53,7 +53,7 @@ test("missing content-length ends at header terminator") {
         Result::Err(_) => panic "framed end",
     };
     let extra = to_bytes("NEXT");
-    assert!(end + len(extra) == len(raw), "header only");
+    assert!(end + extra.len() == raw.len(), "header only");
 }
 
 test("truncated body is an error") {
@@ -82,7 +82,7 @@ test("framed request with extra pipelined bytes") {
         Result::Err(_) => panic "parse request",
     };
     assert!(req.method_val() == "POST", "method");
-    assert!(len(req.body_val()) == 3, "body len");
+    assert!(req.body_val().len() == 3, "body len");
 }
 
 test("chunked transfer-encoding frames through last chunk") {
@@ -92,5 +92,5 @@ test("chunked transfer-encoding frames through last chunk") {
         Result::Err(_) => panic "framed end",
     };
     let extra = to_bytes("XXXX");
-    assert!(end + len(extra) == len(raw), "end before XXXX");
+    assert!(end + extra.len() == raw.len(), "end before XXXX");
 }

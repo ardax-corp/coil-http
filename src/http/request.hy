@@ -65,7 +65,7 @@ fn request_line_ok(Vec<byte> head) -> int {
     let cr: byte = "\r";
     let lf: byte = "\n";
     let i = 0;
-    let n = len(head);
+    let n = head.len();
     while i + 1 < n {
         if head[i] == cr {
             if head[i + 1] == lf {
@@ -100,7 +100,7 @@ fn extras_sanitize(string extras) -> Result<string, HttpError> {
     let colon: byte = ":";
     let line_start = 0;
     let i = 0;
-    let n = len(b);
+    let n = b.len();
     while i + 1 < n {
         if b[i] == cr {
             if b[i + 1] == lf {
@@ -193,12 +193,12 @@ fn body_len_str(int body_len) -> string {
 fn concat_bytes(Vec<byte> a, Vec<byte> b) -> Vec<byte> {
     let out: Vec<byte> = Vec::new();
     let i = 0;
-    while i < len(a) {
+    while i < a.len() {
         out.push(a[i]);
         i = i + 1;
     }
     let j = 0;
-    while j < len(b) {
+    while j < b.len() {
         out.push(b[j]);
         j = j + 1;
     }
@@ -300,7 +300,7 @@ fn is_reserved_request_header(string name) -> int {
 fn format_extra_headers_str(Vec<string> names, Vec<string> values) -> string {
     let first = 999999;
     let i = 0;
-    let n = len(names);
+    let n = names.len();
     while i < n {
         if is_reserved_request_header(names[i]) == 0 {
             if first == 999999 {

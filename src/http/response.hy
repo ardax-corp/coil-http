@@ -61,11 +61,11 @@ fn response_status(Response r) -> Result<int, HttpError> {
 }
 
 fn response_body_len(Response r) -> Result<int, HttpError> {
-    return len(r.body);
+    return r.body.len();
 }
 
 fn header_count(Response r) -> int {
-    return len(r.header_names);
+    return r.header_names.len();
 }
 
 fn header_name_at_resp(Response r, int i) -> string {
@@ -74,7 +74,7 @@ fn header_name_at_resp(Response r, int i) -> string {
 
 fn header_get(Response r, string name) -> string {
     let i = 0;
-    let n = len(r.header_names);
+    let n = r.header_names.len();
     while i < n {
         if r.header_names[i] == name {
             return r.header_values[i];
@@ -86,7 +86,7 @@ fn header_get(Response r, string name) -> string {
 
 fn trailer_get(Response r, string name) -> string {
     let i = 0;
-    let n = len(r.trailer_names);
+    let n = r.trailer_names.len();
     while i < n {
         if r.trailer_names[i] == name {
             return r.trailer_values[i];
@@ -100,7 +100,7 @@ fn find_header_end(Vec<byte> buf) -> int {
     let cr: byte = "\r";
     let lf: byte = "\n";
     let i = 0;
-    let n = len(buf);
+    let n = buf.len();
     while i + 3 < n {
         if buf[i] == cr {
             if buf[i + 1] == lf {
@@ -120,7 +120,7 @@ fn bytes_slice_resp(Vec<byte> src, int start, int end) -> Vec<byte> {
     let out: Vec<byte> = Vec::new();
     let i = start;
     while i < end {
-        if i < len(src) {
+        if i < src.len() {
             out.push(src[i]);
         }
         i = i + 1;
@@ -132,7 +132,7 @@ fn find_crlf(Vec<byte> buf, int from) -> int {
     let cr: byte = "\r";
     let lf: byte = "\n";
     let i = from;
-    while i + 1 < len(buf) {
+    while i + 1 < buf.len() {
         if buf[i] == cr {
             if buf[i + 1] == lf {
                 return i;
@@ -146,7 +146,7 @@ fn find_crlf(Vec<byte> buf, int from) -> int {
 fn parse_status_code(Vec<byte> line) -> Result<int, HttpError> {
     let sp: byte = " ";
     let i = 0;
-    let n = len(line);
+    let n = line.len();
     while i < n {
         if line[i] == sp {
             i = i + 1;
@@ -174,7 +174,7 @@ fn parse_status_code(Vec<byte> line) -> Result<int, HttpError> {
 }
 
 fn parse_int_bytes(Vec<byte> b) -> Result<int, HttpError> {
-    let n = len(b);
+    let n = b.len();
     if n == 0 {
         http_err_bad_response()?;
     }
@@ -189,7 +189,7 @@ fn parse_int_bytes(Vec<byte> b) -> Result<int, HttpError> {
 
 fn find_byte(Vec<byte> line, byte needle) -> int {
     let k = 0;
-    while k < len(line) {
+    while k < line.len() {
         if line[k] == needle {
             return k;
         }
@@ -200,7 +200,7 @@ fn find_byte(Vec<byte> line, byte needle) -> int {
 
 fn parse_status_line(Vec<byte> header_bytes) -> Result<int, HttpError> {
     let eol = find_crlf(header_bytes, 0);
-    let line_end = len(header_bytes);
+    let line_end = header_bytes.len();
     if eol != 999999 {
         line_end = eol;
     }
@@ -217,12 +217,12 @@ fn append_header_line(Vec<string> names, Vec<string> values, Vec<byte> line) -> 
     }
     let name_b = bytes_slice_resp(line, 0, cpos);
     let val_start = cpos + 1;
-    if val_start < len(line) {
+    if val_start < line.len() {
         if line[val_start] == sp {
             val_start = val_start + 1;
         }
     }
-    let val_b = bytes_slice_resp(line, val_start, len(line));
+    let val_b = bytes_slice_resp(line, val_start, line.len());
     let name = bytes_to_string(name_b)?;
     let value = bytes_to_string(val_b)?;
     names.push(name);
@@ -232,7 +232,7 @@ fn append_header_line(Vec<string> names, Vec<string> values, Vec<byte> line) -> 
 
 fn content_length_from(Vec<string> names, Vec<string> values) -> Result<int, HttpError> {
     let i = 0;
-    while i < len(names) {
+    while i < names.len() {
         if header_name_eq_ci(names[i], "Content-Length") == 1 {
             return parse_int_bytes(to_bytes(values[i]))?;
         }
@@ -243,7 +243,7 @@ fn content_length_from(Vec<string> names, Vec<string> values) -> Result<int, Htt
 
 fn transfer_encoding_is_chunked(Vec<string> names, Vec<string> values) -> int {
     let i = 0;
-    while i < len(names) {
+    while i < names.len() {
         if header_name_eq_ci(names[i], "Transfer-Encoding") == 1 {
             if header_name_eq_ci(values[i], "chunked") == 1 {
                 return 1;
@@ -260,7 +260,7 @@ fn collect_header_pairs(Vec<byte> header_bytes, Vec<string> names, Vec<string> v
         return 0;
     }
     let pos = eol0 + 2;
-    let n = len(header_bytes);
+    let n = header_bytes.len();
     while pos < n {
         let eol = find_crlf(header_bytes, pos);
         let line_end = n;
@@ -281,7 +281,7 @@ fn collect_header_pairs(Vec<byte> header_bytes, Vec<string> names, Vec<string> v
 }
 
 fn parse_chunk_size_line(Vec<byte> line) -> Result<int, HttpError> {
-    let n = len(line);
+    let n = line.len();
     if n == 0 {
         http_err_bad_response()?;
     }
@@ -322,7 +322,7 @@ fn int_to_hex(int n) -> string {
     }
     let out: Vec<byte> = Vec::new();
     let i = 0;
-    let dn = len(digits);
+    let dn = digits.len();
     while i < dn {
         out.push(digits[dn - 1 - i]);
         i = i + 1;
@@ -343,7 +343,7 @@ fn crlf_bytes() -> Vec<byte> {
 /// Parse chunked `raw` into `out`. Returns byte count consumed, including the last chunk and trailers.
 fn decode_chunked_into(Vec<byte> raw, Vec<byte> out) -> Result<int, HttpError> {
     let pos = 0;
-    let n = len(raw);
+    let n = raw.len();
     let crlf = crlf_bytes();
     while pos < n {
         let eol = find_crlf(raw, pos);
@@ -397,7 +397,7 @@ fn decode_chunked_body(Vec<byte> raw) -> Result<Vec<byte>, HttpError> {
 
 /// Encode `body` as one chunk plus a terminating zero chunk.
 fn encode_chunked_body(Vec<byte> body) -> Result<Vec<byte>, HttpError> {
-    let hex = int_to_hex(len(body));
+    let hex = int_to_hex(body.len());
     let out = to_bytes(hex);
     let crlf = crlf_bytes();
     let i = 0;
@@ -406,7 +406,7 @@ fn encode_chunked_body(Vec<byte> body) -> Result<Vec<byte>, HttpError> {
         i = i + 1;
     }
     let j = 0;
-    while j < len(body) {
+    while j < body.len() {
         out.push(body[j]);
         j = j + 1;
     }
@@ -440,7 +440,7 @@ fn http_framed_end(Vec<byte> raw) -> Result<int, HttpError> {
     let values: Vec<string> = Vec::new();
     collect_header_pairs(header_bytes, names, values)?;
     if transfer_encoding_is_chunked(names, values) == 1 {
-        let rest = bytes_slice_resp(raw, sep + 4, len(raw));
+        let rest = bytes_slice_resp(raw, sep + 4, raw.len());
         let dump: Vec<byte> = Vec::new();
         let n = decode_chunked_into(rest, dump)?;
         return sep + 4 + n;
@@ -449,7 +449,7 @@ fn http_framed_end(Vec<byte> raw) -> Result<int, HttpError> {
     let end = sep + 4;
     if content_length != 999999 {
         end = sep + 4 + content_length;
-        if end > len(raw) {
+        if end > raw.len() {
             http_err_bad_response()?;
         }
     }
@@ -475,7 +475,7 @@ fn parse_response(Vec<byte> raw) -> Result<Response, HttpError> {
         http_err_bad_response()?;
     }
     let header_bytes = bytes_slice_resp(raw, 0, sep);
-    let rest = bytes_slice_resp(raw, sep + 4, len(raw));
+    let rest = bytes_slice_resp(raw, sep + 4, raw.len());
 
     let status = parse_status_line(header_bytes)?;
 
@@ -491,10 +491,10 @@ fn parse_response(Vec<byte> raw) -> Result<Response, HttpError> {
     let content_length = content_length_from(names, values)?;
     let body = rest;
     if content_length != 999999 {
-        if content_length > len(rest) {
+        if content_length > rest.len() {
             http_err_bad_response()?;
         }
-        if content_length < len(rest) {
+        if content_length < rest.len() {
             body = bytes_slice_resp(rest, 0, content_length);
         }
     }

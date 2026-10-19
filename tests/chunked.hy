@@ -15,7 +15,7 @@ test("encode then decode roundtrip") {
         Result::Ok(b) => b,
         Result::Err(_) => panic "decode",
     };
-    assert!(len(out) == 5, "len");
+    assert!(out.len() == 5, "len");
     assert!(out[0] == ("h" as byte), "h");
 }
 
@@ -25,7 +25,7 @@ test("decode two chunks") {
         Result::Ok(b) => b,
         Result::Err(_) => panic "decode",
     };
-    assert!(len(out) == 6, "len");
+    assert!(out.len() == 6, "len");
     assert!(out[5] == ("!" as byte), "bang");
 }
 
@@ -35,7 +35,7 @@ test("decode ignores chunk extensions") {
         Result::Ok(b) => b,
         Result::Err(_) => panic "decode",
     };
-    assert!(len(out) == 5, "len");
+    assert!(out.len() == 5, "len");
 }
 
 test("reject truncated chunk") {
@@ -54,7 +54,7 @@ test("parse chunked response") {
         Result::Err(_) => panic "parse",
     };
     assert!(r.status == 200, "status");
-    assert!(len(r.body) == 5, "body");
+    assert!(r.body.len() == 5, "body");
 }
 
 test("parse chunked request") {
@@ -64,7 +64,7 @@ test("parse chunked request") {
         Result::Err(_) => panic "parse",
     };
     assert!(req.method_val() == "POST", "method");
-    assert!(len(req.body_val()) == 3, "body");
+    assert!(req.body_val().len() == 3, "body");
 }
 
 test("framed end of chunked response with extra bytes") {
@@ -74,7 +74,7 @@ test("framed end of chunked response with extra bytes") {
         Result::Err(_) => panic "framed end",
     };
     let extra = to_bytes("NEXT");
-    assert!(end + len(extra) == len(raw), "end before NEXT");
+    assert!(end + extra.len() == raw.len(), "end before NEXT");
 }
 
 test("encode_response uses chunked when header set") {

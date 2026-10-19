@@ -50,7 +50,7 @@ fn exchange(HttpConn c, string req) -> int {
         Result::Err(_) => panic "write",
     };
     return match read_http_message(c) {
-        Result::Ok(b) => len(b),
+        Result::Ok(b) => b.len(),
         Result::Err(_) => 0,
     };
 }

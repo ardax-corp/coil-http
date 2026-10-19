@@ -17,7 +17,7 @@ test("parse response with content-length") {
         Result::Err(_) => panic "parse failed",
     };
     assert!(r.status == 200, "status");
-    assert!(len(r.body) == 2, "body len");
+    assert!(r.body.len() == 2, "body len");
     assert!(header_get(r, "Content-Type") == "text/plain", "content-type");
 }
 
@@ -28,7 +28,7 @@ test("parse response read-to-close body") {
         Result::Err(_) => panic "parse failed",
     };
     assert!(r.status == 204, "status");
-    assert!(len(r.body) == 0, "empty body");
+    assert!(r.body.len() == 0, "empty body");
 }
 
 test("response_status helper") {
@@ -56,7 +56,7 @@ test("content-length header is case-insensitive") {
         Result::Err(_) => panic "parse failed",
     };
     assert!(r.status == 200, "status");
-    assert!(len(r.body) == 3, "truncated to content-length");
+    assert!(r.body.len() == 3, "truncated to content-length");
 }
 
 test("content-length truncates longer rest") {
@@ -65,7 +65,7 @@ test("content-length truncates longer rest") {
         Result::Ok(v) => v,
         Result::Err(_) => panic "parse failed",
     };
-    assert!(len(r.body) == 1, "body len");
+    assert!(r.body.len() == 1, "body len");
     let x: Vec<byte> = Vec::new();
     x.push(88);
     if find_bytes(r.body, x) != 0 { panic "first byte X"; }

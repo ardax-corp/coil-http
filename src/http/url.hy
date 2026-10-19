@@ -40,7 +40,7 @@ impl Headers {
 
     /// Number of header pairs.
     pub fn count() -> int {
-        return len(self.names);
+        return self.names.len();
     }
 
     /// Header name at index `i`.
@@ -98,7 +98,7 @@ fn url_path(Url u) -> Result<string, HttpError> {
 }
 
 fn headers_count(Headers h) -> Result<int, HttpError> {
-    return len(h.names);
+    return h.names.len();
 }
 
 fn header_name_at(Headers h, int i) -> Result<string, HttpError> {
@@ -113,7 +113,7 @@ fn bytes_slice(Vec<byte> src, int start, int end) -> Vec<byte> {
     let out: Vec<byte> = Vec::new();
     let i = start;
     while i < end {
-        if i < len(src) {
+        if i < src.len() {
             out.push(src[i]);
         }
         i = i + 1;
@@ -130,8 +130,8 @@ fn bytes_to_string(Vec<byte> b) -> Result<string, HttpError> {
 
 /// Find `needle` in `hay`; returns index or 999999 if missing.
 fn find_bytes(Vec<byte> hay, Vec<byte> needle) -> int {
-    let hn = len(hay);
-    let nn = len(needle);
+    let hn = hay.len();
+    let nn = needle.len();
     if nn == 0 {
         return 0;
     }
@@ -190,7 +190,7 @@ fn bytes_have_crlf(Vec<byte> b) -> int {
     let i = 0;
     let cr: byte = "\r";
     let lf: byte = "\n";
-    while i < len(b) {
+    while i < b.len() {
         if b[i] == cr {
             return 1;
         }
@@ -222,7 +222,7 @@ fn str_reject_crlf(string s) -> Result<string, HttpError> {
 
 fn headers_have_crlf(Vec<string> names, Vec<string> values) -> int {
     let i = 0;
-    let n = len(names);
+    let n = names.len();
     while i < n {
         if has_crlf(names[i]) == 1 {
             return 1;
@@ -270,7 +270,7 @@ fn parse_url(string s) -> Result<Url, HttpError> {
     let scheme_b = bytes_slice(b, 0, sep_at);
     let scheme = bytes_to_string(scheme_b)?;
     let rest_start = sep_at + 3;
-    if rest_start > len(b) {
+    if rest_start > b.len() {
         http_err_bad_url()?;
     }
 
@@ -279,13 +279,13 @@ fn parse_url(string s) -> Result<Url, HttpError> {
     let colon: byte = ":";
 
     let i = rest_start;
-    let host_end = len(b);
-    let path_start = len(b);
+    let host_end = b.len();
+    let path_start = b.len();
     let port_start = 0;
     let has_port = 0;
     let found_path = 0;
 
-    while i < len(b) {
+    while i < b.len() {
         let c = b[i];
         if found_path == 0 {
             if c == colon {
@@ -317,9 +317,9 @@ fn parse_url(string s) -> Result<Url, HttpError> {
         if has_port == 1 {
             host_end = port_start - 1;
         } else {
-            host_end = len(b);
+            host_end = b.len();
         }
-        path_start = len(b);
+        path_start = b.len();
     } else {
         if has_port == 1 {
             if port_start >= path_start {
@@ -353,7 +353,7 @@ fn parse_url(string s) -> Result<Url, HttpError> {
     if has_port == 1 {
         let port_end = path_start;
         if found_path == 0 {
-            port_end = len(b);
+            port_end = b.len();
         }
         let parsed = parse_port_digits(b, port_start, port_end);
         if parsed == 999999 {
@@ -365,13 +365,13 @@ fn parse_url(string s) -> Result<Url, HttpError> {
     let path = "/";
     if found_path == 1 {
         if b[path_start] == qmark {
-            let path_b = bytes_slice(b, path_start, len(b));
+            let path_b = bytes_slice(b, path_start, b.len());
             if bytes_have_crlf(path_b) == 1 {
                 http_err_bad_url()?;
             }
             path = bytes_to_string(path_b)?;
         } else {
-            let path_b = bytes_slice(b, path_start, len(b));
+            let path_b = bytes_slice(b, path_start, b.len());
             if bytes_have_crlf(path_b) == 1 {
                 http_err_bad_url()?;
             }
@@ -398,11 +398,11 @@ fn parse_url(string s) -> Result<Url, HttpError> {
 fn header_name_eq_ci(string a, string b) -> int {
     let ab = to_bytes(a);
     let bb = to_bytes(b);
-    if len(ab) != len(bb) {
+    if ab.len() != bb.len() {
         return 0;
     }
     let i = 0;
-    while i < len(ab) {
+    while i < ab.len() {
         let x = ab[i] as int;
         let y = bb[i] as int;
         if x >= 65 {

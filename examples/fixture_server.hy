@@ -11,7 +11,7 @@ fn fixed_response() -> Vec<byte> {
 fn find_header_end(Vec<byte> buf) -> int {
     let cr: byte = 13;
     let lf: byte = 10;
-    let n = len(buf);
+    let n = buf.len();
     let i = 0;
     while i + 3 < n {
         if buf[i] == cr {

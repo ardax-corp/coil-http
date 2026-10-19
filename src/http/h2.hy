@@ -51,7 +51,7 @@ impl H2Settings {
     }
 
     pub fn count() -> int {
-        return len(self.ids);
+        return self.ids.len();
     }
 }
 
@@ -183,7 +183,7 @@ fn push_u8(Vec<byte> out, int n) {
 }
 
 fn encode_frame(H2Frame f) -> Vec<byte> {
-    let n = len(f.payload);
+    let n = f.payload.len();
     let out: Vec<byte> = Vec::new();
     push_u8(out, n / 65536);
     push_u8(out, n / 256);
@@ -209,11 +209,11 @@ fn u8_at(Vec<byte> raw, int i) -> int {
 
 /// Complete first-frame size (9 + length), or 0 if `raw` is truncated.
 fn frame_wire_len(Vec<byte> raw) -> int {
-    if len(raw) < 9 {
+    if raw.len() < 9 {
         return 0;
     }
     let n = u8_at(raw, 0) * 65536 + u8_at(raw, 1) * 256 + u8_at(raw, 2);
-    if len(raw) < 9 + n {
+    if raw.len() < 9 + n {
         return 0;
     }
     return 9 + n;
@@ -221,11 +221,11 @@ fn frame_wire_len(Vec<byte> raw) -> int {
 
 /// Parse the first HTTP/2 frame in `raw`. Extra bytes after the frame are ignored.
 fn decode_frame(Vec<byte> raw) -> Result<H2Frame, HttpError> {
-    if len(raw) < 9 {
+    if raw.len() < 9 {
         http_err_bad_response()?;
     }
     let n = u8_at(raw, 0) * 65536 + u8_at(raw, 1) * 256 + u8_at(raw, 2);
-    if len(raw) < 9 + n {
+    if raw.len() < 9 + n {
         http_err_bad_response()?;
     }
     let typ = u8_at(raw, 3);
@@ -242,11 +242,11 @@ fn connection_preface() -> Vec<byte> {
 
 fn preface_ok(Vec<byte> raw) -> int {
     let want = connection_preface();
-    if len(raw) < len(want) {
+    if raw.len() < want.len() {
         return 0;
     }
     let i = 0;
-    while i < len(want) {
+    while i < want.len() {
         if raw[i] != want[i] {
             return 0;
         }
@@ -295,7 +295,7 @@ fn encode_settings_payload(H2Settings s) -> Vec<byte> {
 
 /// Decode SETTINGS payload. Length must be a multiple of 6 (ACK uses empty payload).
 fn decode_settings_payload(Vec<byte> raw) -> Result<H2Settings, HttpError> {
-    let n = len(raw);
+    let n = raw.len();
     if n % 6 != 0 {
         http_err_bad_response()?;
     }
@@ -333,7 +333,7 @@ fn encode_window_update_payload(int increment) -> Result<Vec<byte>, HttpError> {
 
 /// Decode 4-byte WINDOW_UPDATE. Reserved bit is cleared; increment 0 is an error.
 fn decode_window_update_payload(Vec<byte> raw) -> Result<int, HttpError> {
-    if len(raw) != 4 {
+    if raw.len() != 4 {
         http_err_bad_response()?;
     }
     let inc = u32_at(raw, 0) % two31();
@@ -358,7 +358,7 @@ fn encode_goaway_payload(int last_stream_id, int error_code) -> Vec<byte> {
 
 /// Decode GOAWAY. Requires at least 8 bytes; extra debug data is ignored.
 fn decode_goaway_payload(Vec<byte> raw) -> Result<H2Goaway, HttpError> {
-    if len(raw) < 8 {
+    if raw.len() < 8 {
         http_err_bad_response()?;
     }
     let last = u32_at(raw, 0) % two31();
@@ -372,7 +372,7 @@ fn goaway_frame(int last_stream_id, int error_code) -> H2Frame {
 
 /// PING payload is exactly 8 bytes. `ack` nonzero sets the ACK flag.
 fn ping_frame(Vec<byte> payload, int ack) -> Result<H2Frame, HttpError> {
-    if len(payload) != 8 {
+    if payload.len() != 8 {
         http_err_bad_response()?;
     }
     let flags = 0;
@@ -389,7 +389,7 @@ fn rst_stream_frame(int stream_id, int error_code) -> H2Frame {
 }
 
 fn decode_rst_payload(Vec<byte> raw) -> Result<int, HttpError> {
-    if len(raw) != 4 {
+    if raw.len() != 4 {
         http_err_bad_response()?;
     }
     return u32_at(raw, 0);
@@ -428,7 +428,7 @@ fn data_frame(int stream_id, Vec<byte> payload, int end_stream) -> H2Frame {
 
 fn h2_append(Vec<byte> out, Vec<byte> extra) {
     let i = 0;
-    while i < len(extra) {
+    while i < extra.len() {
         out.push(extra[i]);
         i = i + 1;
     }
@@ -456,7 +456,7 @@ fn encode_headers_block_frames(int stream_id, Vec<byte> block, int end_stream, i
         max_payload = 1;
     }
     let out: Vec<byte> = Vec::new();
-    let n = len(block);
+    let n = block.len();
     if n <= max_payload {
         let flags = flag_end_headers();
         if end_stream != 0 {
@@ -512,7 +512,7 @@ fn encode_push_promise_payload(int promised_id, Vec<byte> block) -> Vec<byte> {
 }
 
 fn decode_push_promise_payload(Vec<byte> raw) -> Result<H2Push, HttpError> {
-    if len(raw) < 4 {
+    if raw.len() < 4 {
         http_err_bad_response()?;
     }
     let promised = u32_at(raw, 0) % two31();
@@ -522,7 +522,7 @@ fn decode_push_promise_payload(Vec<byte> raw) -> Result<H2Push, HttpError> {
     if promised % 2 == 1 {
         http_err_bad_response()?;
     }
-    let block = bytes_slice_resp(raw, 4, len(raw));
+    let block = bytes_slice_resp(raw, 4, raw.len());
     return H2Push::new(promised, block);
 }
 
@@ -538,7 +538,7 @@ fn encode_push_promise_frames(int stream_id, int promised_id, Headers h, int max
     }
     let full = encode_push_promise_payload(promised_id, encode_header_block(h));
     let out: Vec<byte> = Vec::new();
-    let n = len(full);
+    let n = full.len();
     if n <= max_payload {
         h2_append(out, encode_frame(H2Frame::new(frame_type_push_promise(), flag_end_headers(), stream_id, full)));
         return out;
@@ -621,7 +621,7 @@ fn h2_parse_status_digits(string s) -> int {
     let b = to_bytes(s);
     let v = 0;
     let i = 0;
-    while i < len(b) {
+    while i < b.len() {
         v = v * 10 + ((b[i] as int) - (("0" as byte) as int));
         i = i + 1;
     }
@@ -765,7 +765,7 @@ fn h2_read_frame(Stream s) -> Result<H2Frame, HttpError> {
 /// Non-blocking first byte: `None` if nothing is ready. Completes a partial frame.
 fn h2_try_read_frame(Stream s) -> Result<Option<H2Frame>, HttpError> {
     let hdr = h2_read_n_wait(s, 9, 0)?;
-    if len(hdr) == 0 {
+    if hdr.len() == 0 {
         return Option::None;
     }
     let n = u8_at(hdr, 0) * 65536 + u8_at(hdr, 1) * 256 + u8_at(hdr, 2);
@@ -787,7 +787,7 @@ fn h2_prior_knowledge_two_gets(Url a, Url b) -> Vec<byte> {
 }
 
 fn h2_http11_exchange(Stream s, string method, Url u, Headers headers, Vec<byte> body) -> Result<Response, HttpError> {
-    let head = match build_request_head(method, u, headers, len(body)) {
+    let head = match build_request_head(method, u, headers, body.len()) {
         Result::Ok(v) => v,
         Result::Err(e) => {
             h2_close(s);

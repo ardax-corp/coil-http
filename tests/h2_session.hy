@@ -40,12 +40,12 @@ use http::hpack::{decode_header_block};
 fn cat_bytes(Vec<byte> a, Vec<byte> b) -> Vec<byte> {
     let out: Vec<byte> = Vec::new();
     let i = 0;
-    while i < len(a) {
+    while i < a.len() {
         out.push(a[i]);
         i = i + 1;
     }
     let j = 0;
-    while j < len(b) {
+    while j < b.len() {
         out.push(b[j]);
         j = j + 1;
     }
@@ -74,7 +74,7 @@ test("preface plus settings yields ack") {
     assert!(ack.typ == frame_type_settings(), "settings");
     assert!(ack.flags == flag_ack(), "ack");
     assert!(ack.stream_id == 0, "stream 0");
-    assert!(len(ack.payload) == 0, "empty");
+    assert!(ack.payload.len() == 0, "empty");
 }
 
 test("bad preface is an error") {
@@ -112,7 +112,7 @@ test("headers GET slash and data end stream") {
         Result::Ok(v) => v,
         Result::Err(_) => panic "body",
     };
-    assert!(len(got) == 2, "len");
+    assert!(got.len() == 2, "len");
     assert!(got[0] == ("h" as byte), "h");
     assert!(got[1] == ("i" as byte), "i");
     let ended = match sess.stream_ended(1) {
@@ -159,8 +159,8 @@ test("two streams interleaved") {
         Result::Ok(v) => v,
         Result::Err(_) => panic "b3",
     };
-    assert!(len(g1) == 2, "b1 len");
-    assert!(len(g3) == 2, "b3 len");
+    assert!(g1.len() == 2, "b1 len");
+    assert!(g3.len() == 2, "b3 len");
     assert!(g1[0] == ("a" as byte), "a");
     assert!(g3[0] == ("c" as byte), "c");
     let e1 = match sess.stream_ended(1) {
@@ -218,7 +218,7 @@ test("settings with params still acks") {
         Result::Err(_) => panic "ack",
     };
     assert!(ack.flags == flag_ack(), "ack");
-    assert!(len(ack.payload) == 0, "empty ack");
+    assert!(ack.payload.len() == 0, "empty ack");
 }
 
 fn boot_session() -> H2Session {
@@ -279,7 +279,7 @@ test("partial frame waits then completes on next feed") {
     };
     assert!(sess.stream_count() == 0, "not yet");
     let tail: Vec<byte> = Vec::new();
-    while i < len(full) {
+    while i < full.len() {
         tail.push(full[i]);
         i = i + 1;
     }
@@ -327,7 +327,7 @@ test("settings ack does not emit another ack") {
         Result::Err(_) => panic "feed ack",
     };
     let out = sess.drain();
-    assert!(len(out) == 0, "no reply ack");
+    assert!(out.len() == 0, "no reply ack");
     let h = get_slash_headers();
     match sess.feed(encode_frame(headers_frame(1, h, 1))) {
         Result::Ok(_) => 0,
@@ -429,7 +429,7 @@ test("two data frames append before end stream") {
         Result::Ok(v) => v,
         Result::Err(_) => panic "body",
     };
-    assert!(len(got) == 4, "len");
+    assert!(got.len() == 4, "len");
     assert!(got[0] == ("a" as byte), "a");
     assert!(got[2] == ("c" as byte), "c");
     let ended = match sess.stream_ended(1) {
@@ -524,7 +524,7 @@ test("data on stream zero is an error") {
 fn hpack_octets(int... xs) -> Vec<byte> {
     let out: Vec<byte> = Vec::new();
     let i = 0;
-    while i < len(xs) {
+    while i < xs.len() {
         out.push(xs[i] as byte);
         i = i + 1;
     }
@@ -587,7 +587,7 @@ fn rest_after_frame(Vec<byte> wire) -> Vec<byte> {
     let n = frame_wire_len(wire);
     let out: Vec<byte> = Vec::new();
     let i = n;
-    while i < len(wire) {
+    while i < wire.len() {
         out.push(wire[i]);
         i = i + 1;
     }

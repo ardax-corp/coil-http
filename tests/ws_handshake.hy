@@ -65,9 +65,9 @@ test("ws url defaults") {
 
 test("key is 24-char base64") {
     let k = ws_new_key(42);
-    assert!(len(to_bytes(k)) == 24, "b64 16 bytes");
+    assert!(to_bytes(k).len() == 24, "b64 16 bytes");
     let k2 = ws_new_key(43);
-    assert!(len(to_bytes(k2)) == 24, "other seed");
+    assert!(to_bytes(k2).len() == 24, "other seed");
 }
 
 test("second accept key vector") {

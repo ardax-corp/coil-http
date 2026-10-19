@@ -262,7 +262,7 @@ fn h2_close_stream(Stream s) {
 }
 
 fn h2_write_bytes(Stream s, Vec<byte> wire) -> Result<(), HttpError> {
-    if len(wire) == 0 {
+    if wire.len() == 0 {
         return ();
     }
     match write_all(s, wire) {
@@ -277,7 +277,7 @@ fn h2_write_bytes(Stream s, Vec<byte> wire) -> Result<(), HttpError> {
 
 fn h2_int_has(Vec<int> v, int x) -> int {
     let i = 0;
-    while i < len(v) {
+    while i < v.len() {
         if v[i] == x {
             return 1;
         }
@@ -340,13 +340,13 @@ fn h2_dispatch_ready(H2Session sess, HttpHandler handler, Vec<int> done_ids) -> 
                     let resp = handle(handler, req);
                     let fields = Headers::new();
                     let hi = 0;
-                    while hi < len(resp.header_names) {
+                    while hi < resp.header_names.len() {
                         fields.add(resp.header_names[hi], resp.header_values[hi]);
                         hi = hi + 1;
                     }
                     let trails = Headers::new();
                     let ti = 0;
-                    while ti < len(resp.trailer_names) {
+                    while ti < resp.trailer_names.len() {
                         trails.add(resp.trailer_names[ti], resp.trailer_values[ti]);
                         ti = ti + 1;
                     }
