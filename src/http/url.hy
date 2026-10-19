@@ -1,5 +1,6 @@
 // URL parse, headers, and shared HTTP utilities (byte-scan; no string slice/index).
-use io::{Stream, from_bytes, to_bytes};
+use io::{Stream};
+use string::{from_bytes, to_bytes};
 
 /// URL parse, response parse, scheme, or I/O failure.
 enum HttpError {

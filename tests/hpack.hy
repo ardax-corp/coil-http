@@ -1,7 +1,7 @@
 // HPACK header block tests (Huffman decode, dynamic table, Appendix A).
 use tests::assert;
 use http::url::{Headers};
-use io::{to_bytes};
+use string::{to_bytes};
 use http::hpack::{
     HpackTable,
     decode_header_block,

@@ -1,7 +1,8 @@
 // WebSocket (RFC 6455) over HTTP/1.1 upgrade. Framing + handshake; not a new transport.
 use encoding::{encode};
 use conv::{int_to_dec};
-use io::{Stream, close as io_close, to_bytes, read, IoError, wait_readable};
+use io::{Stream, close as io_close, read, IoError, wait_readable};
+use string::{to_bytes};
 use io::net::tcp::connect as tcp_connect;
 use io::sync::{accept_wait, write_all};
 use tls::client::{enable as tls_enable, ClientOpts};
