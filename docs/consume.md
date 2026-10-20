@@ -26,7 +26,7 @@ That currently fails: this repo's `coil.toml` requires `tls` `version = "^0.1"` 
 
 ```toml
 [module]
-roots = ["./src", ".spool/deps/http", ".spool/deps/tls"]
+roots = ["./src"]
 
 [permissions]
 net = true
@@ -41,6 +41,6 @@ http = { git = "https://github.com/ardax-corp/coil-http.git", version = "^0.1" }
 tls = { git = "https://github.com/ardax-corp/coil-tls.git", version = "^0.1", trusted = true }
 ```
 
-spool links `.spool/deps/<name>` to each checkout's `src/`. The extra roots are needed because modules live in `src/http/` and `src/tls/`: through the `.spool/deps` root alone, `use http::client::Client` looks for `src/client.hy`.
+spool links `.spool/deps/<name>` to each checkout's `src/` and also passes each `src/` as a root (spool#30), so `use http::client::Client` resolves to `src/http/client.hy` with no extra roots.
 
 Imports use the `http::` prefix (`use http::client::Client`). TLS stays `use tls::{client, server}`. WebSocket is `use http::ws::{ws_connect, ws_serve_once}`.
