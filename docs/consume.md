@@ -16,13 +16,13 @@ coil --root ../coil-http/src --root ../coil-tls/src --root ../coil-stdlib/src \
 
 ## With spool
 
-This repo is tagged (`v0.1.0`):
+coil-tls has no tags yet, so this repo's `coil.toml` requires `tls` at `version = "latest"` (the default branch tip, spool#32). Track this repo the same way; the `v0.1.0` tag still declares `tls = "^0.1"`, which does not resolve:
 
 ```bash
-spool add http --git https://github.com/ardax-corp/coil-http.git --version '^0.1'
+spool add http --git https://github.com/ardax-corp/coil-http.git --version latest
 ```
 
-That currently fails: this repo's `coil.toml` requires `tls` `version = "^0.1"` and coil-tls has no tags, so spool finds no matching tag. Once coil-tls is tagged, the consumer `coil.toml` looks like this (spool does not build `libtls`):
+The consumer `coil.toml` then looks like this (spool does not build `libtls`):
 
 ```toml
 [module]
@@ -37,8 +37,8 @@ search_paths = ["../coil-tls/native"]
 allow = ["tls"]
 
 [dependencies]
-http = { git = "https://github.com/ardax-corp/coil-http.git", version = "^0.1" }
-tls = { git = "https://github.com/ardax-corp/coil-tls.git", version = "^0.1", trusted = true }
+http = { git = "https://github.com/ardax-corp/coil-http.git", version = "latest" }
+tls = { git = "https://github.com/ardax-corp/coil-tls.git", version = "latest", trusted = true }
 ```
 
 spool links `.spool/deps/<name>` to each checkout's `src/` and also passes each `src/` as a root (spool#30), so `use http::client::Client` resolves to `src/http/client.hy` with no extra roots.
