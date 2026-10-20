@@ -85,10 +85,14 @@ fn main() {
         },
     );
     let ms = (mono_nanos() - start) / 1000000;
-    let text = match r {
-        Result::Ok(true) => "ok",
-        default => "failed",
+    let passed = match r {
+        Result::Ok(v) => v,
+        default => false,
     };
+    let text = "failed";
+    if passed {
+        text = "ok";
+    }
     // One after another would take at least 300 ms.
     if ms >= 280 {
         text = "slow: " + int_to_dec(ms) + " ms";

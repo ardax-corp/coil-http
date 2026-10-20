@@ -14,7 +14,7 @@ coil --root ../coil-http/src --root ../coil-tls/src --root ../coil-stdlib/src \
   --allow-attach --allow-net main.hy
 ```
 
-With [spool](https://github.com/ardax-corp/spool), `spool add http --git https://github.com/ardax-corp/coil-http.git --version '^0.1'`. That currently fails: this repo requires `tls` `^0.1` and coil-tls has no tags yet. See [docs/consume.md](docs/consume.md).
+With [spool](https://github.com/ardax-corp/spool), `spool add http --git https://github.com/ardax-corp/coil-http.git --version latest`. See [docs/consume.md](docs/consume.md).
 
 ```coil
 use http::client::Client;
