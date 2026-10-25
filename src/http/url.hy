@@ -1,14 +1,25 @@
 // URL parse, headers, and shared HTTP utilities (byte-scan; no string slice/index).
-use io::{Stream};
+use io::{Stream, IoError};
 use string::{from_bytes, to_bytes};
+use tls::error::{TlsError};
 
-/// URL parse, response parse, scheme, or I/O failure.
+/// An HTTP failure. Socket and TLS failures keep the lower layer's error.
+#[derive(Show, Eq)]
 enum HttpError {
+    /// The URL does not parse, or its host or path holds CR / LF.
     BadUrl,
-    BadResponse,
+    /// A request header name or value holds CR / LF, or a header line has no `:`.
+    InvalidHeader,
+    /// The URL scheme is not `http`, `https`, `ws` or `wss`.
     UnsupportedScheme,
-    Io,
+    /// The feature is not implemented (HTTP/3).
     NotSupported,
+    /// The peer broke HTTP/1.1, HTTP/2 or WebSocket framing.
+    Protocol,
+    /// The socket failed.
+    Io(IoError),
+    /// The TLS layer failed.
+    Tls(TlsError),
 }
 
 /// Parsed `http`/`https`/`ws`/`wss` URL (scheme, host, port, path).
@@ -183,8 +194,12 @@ fn http_err_bad_url() -> Result<(), HttpError> {
     raise HttpError::BadUrl;
 }
 
-fn http_err_bad_response() -> Result<(), HttpError> {
-    raise HttpError::BadResponse;
+fn http_err_invalid_header() -> Result<(), HttpError> {
+    raise HttpError::InvalidHeader;
+}
+
+fn http_err_protocol() -> Result<(), HttpError> {
+    raise HttpError::Protocol;
 }
 
 fn bytes_have_crlf(Vec<byte> b) -> int {
@@ -244,20 +259,33 @@ fn http_err_not_supported() -> Result<(), HttpError> {
     raise HttpError::NotSupported;
 }
 
-fn http_err_io() -> Result<(), HttpError> {
-    raise HttpError::Io;
+fn http_err_io(IoError e) -> Result<(), HttpError> {
+    raise HttpError::Io(e);
 }
 
-fn http_fail_stream() -> Result<Stream, HttpError> {
-    raise HttpError::Io;
+fn http_fail_stream(IoError e) -> Result<Stream, HttpError> {
+    raise HttpError::Io(e);
 }
 
-fn http_fail_bytes() -> Result<Vec<byte>, HttpError> {
-    raise HttpError::Io;
+fn http_fail_bytes(IoError e) -> Result<Vec<byte>, HttpError> {
+    raise HttpError::Io(e);
 }
 
-fn http_fail_unit() -> Result<(), HttpError> {
-    raise HttpError::Io;
+fn http_fail_unit(IoError e) -> Result<(), HttpError> {
+    raise HttpError::Io(e);
+}
+
+fn http_fail_tls(TlsError e) -> Result<Stream, HttpError> {
+    raise HttpError::Tls(e);
+}
+
+fn http_fail_tls_unit(TlsError e) -> Result<(), HttpError> {
+    raise HttpError::Tls(e);
+}
+
+/// No listener: `Server.bind` was not called.
+fn http_not_bound() -> Result<Stream, HttpError> {
+    raise HttpError::Io(IoError::InvalidInput);
 }
 
 /// Parse `http://`, `https://`, `ws://`, or `wss://` URL string.
