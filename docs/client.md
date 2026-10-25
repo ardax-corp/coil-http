@@ -46,7 +46,26 @@ Parsed responses expose `status`, `body`, and `header_get(r, "Name")`.
 
 ## Errors
 
-`HttpError`: `BadUrl`, `BadResponse`, `UnsupportedScheme`, `Io`, `NotSupported`.
+`HttpError` (derives `Show` and `Eq`):
+
+| Variant | When |
+|---|---|
+| `BadUrl` | the URL (or method) does not parse or holds CR/LF |
+| `InvalidHeader` | a request header name/value holds CR/LF, or a header line has no `:` |
+| `UnsupportedScheme` | scheme is not `http`, `https`, `ws`, `wss` |
+| `NotSupported` | HTTP/3 |
+| `Protocol` | the peer broke HTTP/1.1, HTTP/2 or WebSocket framing |
+| `Io(IoError)` | the socket failed; the `io` error is kept |
+| `Tls(TlsError)` | the TLS layer failed (`Certificate`, `Handshake`, or `Io(IoError)`) |
+
+```
+match client.get(url) {
+    Result::Ok(r) => r.status,
+    Result::Err(HttpError::Tls(TlsError::Certificate)) => 0,
+    Result::Err(HttpError::Io(IoError::TimedOut)) => 0,
+    Result::Err(e) => panic format("%v", e),
+};
+```
 
 WebSocket URLs (`ws://`, `wss://`) use `http::ws::ws_connect`, not `Client::get`. See [ws.md](ws.md).
 
