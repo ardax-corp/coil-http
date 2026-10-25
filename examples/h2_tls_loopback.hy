@@ -50,6 +50,7 @@ fn io_err_tag(IoError e) -> string {
         IoError::Truncated => "Truncated",
         IoError::Certificate => "Certificate",
         IoError::Handshake => "Handshake",
+        IoError::NotATerminal => "NotATerminal",
     };
 }
 
