@@ -1,6 +1,6 @@
 // Pure unit tests: URL parse (no sockets).
 use tests::assert;
-use http::url::{parse_url};
+use http::url::{parse_url, HttpError};
 
 test("parse http url with defaults") {
     let u = match parse_url("http://example.com/path") {
@@ -87,7 +87,7 @@ test("reject url path with crlf") {
     let r = parse_url("http://example.com/evil\r\nHost: x");
     assert!(match r {
         Result::Ok(_) => false,
-        Result::Err(_) => true,
+        Result::Err(e) => e == HttpError::BadUrl,
     }, "expected path CRLF BadUrl");
 }
 
@@ -95,7 +95,7 @@ test("reject url host with crlf") {
     let r = parse_url("http://evil\rhost/");
     assert!(match r {
         Result::Ok(_) => false,
-        Result::Err(_) => true,
+        Result::Err(e) => e == HttpError::BadUrl,
     }, "expected host CR BadUrl");
 }
 
@@ -103,6 +103,6 @@ test("reject url path with bare lf") {
     let r = parse_url("http://example.com/a\nb");
     assert!(match r {
         Result::Ok(_) => false,
-        Result::Err(_) => true,
+        Result::Err(e) => e == HttpError::BadUrl,
     }, "expected path LF BadUrl");
 }
