@@ -11,6 +11,7 @@ use http::url::{
     url_host,
     url_port,
     url_scheme,
+    http_err_invalid_header,
 };
 
 /// Outbound HTTP request (method, URL string, headers, body).
@@ -114,7 +115,7 @@ fn extras_sanitize(string extras) -> Result<string, HttpError> {
                         j = j + 1;
                     }
                     if has_colon == 0 {
-                        http_err_bad_url()?;
+                        http_err_invalid_header()?;
                     }
                 }
                 line_start = i + 2;
@@ -129,7 +130,7 @@ fn extras_sanitize(string extras) -> Result<string, HttpError> {
     return match from_bytes(b) {
         Result::Ok(s) => s,
         Result::Err(_) => {
-            http_err_bad_url()?;
+            http_err_invalid_header()?;
             ""
         },
     };

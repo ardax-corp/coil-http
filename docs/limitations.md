@@ -9,8 +9,8 @@
 - Depends on [coil-stdlib](https://github.com/ardax-corp/coil-stdlib) (`conv`, `io::sync`) and [coil-tls](https://github.com/ardax-corp/coil-tls) as `--root`s. `libtls` still needs a local native build on `--ffi-search-path`; spool does not build it
 - WebSocket v1: H1 upgrade only (no HTTP/2, no extensions, no fragmented messages)
 - IPv6 URL literals not supported
-- CR/LF injection in URL/method/headers → `BadUrl`
-- `Content-Length` longer than body → `BadResponse`
+- CR/LF injection in URL/method → `BadUrl`; in header names/values → `InvalidHeader`
+- `Content-Length` longer than body → `Protocol`
 
 ## Compiler workarounds
 

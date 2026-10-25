@@ -10,6 +10,7 @@ use http::url::{
     http_err_bad_url,
     http_fail_unit,
     parse_url,
+    http_err_invalid_header,
 };
 use http::request::{
     Request,
@@ -63,18 +64,17 @@ impl Client {
         let c = self.pool.acquire(u)?;
         match write_all(c.stream(), msg) {
             Result::Ok(_) => 0,
-            Result::Err(_) => {
+            Result::Err(e) => {
                 self.pool.discard(c);
-                http_fail_unit()?;
+                http_fail_unit(e)?;
                 0
             },
         };
         let raw = match read_http_message(c) {
             Result::Ok(b) => b,
-            Result::Err(_) => {
+            Result::Err(e) => {
                 self.pool.discard(c);
-                http_fail_unit()?;
-                Vec::new()
+                return Result::Err(e);
             },
         };
         let resp = match parse_response(raw) {
@@ -107,7 +107,7 @@ impl Client {
         let keep = self.use_pool;
         if n > 0 {
             if headers_have_crlf(headers.names, headers.values) == 1 {
-                http_err_bad_url()?;
+                http_err_invalid_header()?;
             }
             let extras = format_extra_headers_str(headers.names, headers.values);
             if extras != "__NONE__" {
