@@ -296,7 +296,7 @@ fn parse_chunk_size_line(Vec<byte> line) -> Result<int, HttpError> {
         if c == (" " as byte) {
             break;
         }
-        let d = hex_val(c);
+        let d = hex_val(c) ?? -1;
         if d < 0 {
             http_err_bad_response()?;
         }
