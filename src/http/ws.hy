@@ -11,13 +11,15 @@ use http::url::{
     HttpError,
     Url,
     header_name_eq_ci,
-    http_err_bad_response,
+    http_err_protocol,
     http_err_bad_url,
     http_err_io,
     http_err_unsupported_scheme,
     http_fail_stream,
     http_fail_unit,
     parse_url,
+    http_fail_tls,
+    http_not_bound,
 };
 use http::h1::{IncomingRequest, parse_request};
 use http::request::{concat_bytes};
@@ -185,13 +187,13 @@ fn ws_u8_at(Vec<byte> raw, int i) -> int {
 /// Parse the first complete WebSocket frame in `raw`. Extra bytes after it are ignored.
 fn decode_ws_frame(Vec<byte> raw) -> Result<WsFrame, HttpError> {
     if raw.len() < 2 {
-        http_err_bad_response()?;
+        http_err_protocol()?;
     }
     let b0 = ws_u8_at(raw, 0);
     let b1 = ws_u8_at(raw, 1);
     let rsv = (b0 >> 4) & 7;
     if rsv != 0 {
-        http_err_bad_response()?;
+        http_err_protocol()?;
     }
     let fin = (b0 >> 7) & 1;
     let opcode = b0 & 15;
@@ -201,37 +203,37 @@ fn decode_ws_frame(Vec<byte> raw) -> Result<WsFrame, HttpError> {
     let n = llen;
     if llen == 126 {
         if raw.len() < 4 {
-            http_err_bad_response()?;
+            http_err_protocol()?;
         }
         n = ws_u8_at(raw, 2) * ws_mod256() + ws_u8_at(raw, 3);
         pos = 4;
     }
     if llen == 127 {
         if raw.len() < 10 {
-            http_err_bad_response()?;
+            http_err_protocol()?;
         }
         if ws_u8_at(raw, 2) != 0 {
-            http_err_bad_response()?;
+            http_err_protocol()?;
         }
         if ws_u8_at(raw, 3) != 0 {
-            http_err_bad_response()?;
+            http_err_protocol()?;
         }
         if ws_u8_at(raw, 4) != 0 {
-            http_err_bad_response()?;
+            http_err_protocol()?;
         }
         if ws_u8_at(raw, 5) != 0 {
-            http_err_bad_response()?;
+            http_err_protocol()?;
         }
         n = ws_u8_at(raw, 6) * ws_b24() + ws_u8_at(raw, 7) * ws_b16() + ws_u8_at(raw, 8) * ws_mod256() + ws_u8_at(raw, 9);
         pos = 10;
     }
     if n > ws_max_payload() {
-        http_err_bad_response()?;
+        http_err_protocol()?;
     }
     let key: Vec<byte> = Vec::new();
     if masked == 1 {
         if raw.len() < pos + 4 {
-            http_err_bad_response()?;
+            http_err_protocol()?;
         }
         key.push(raw[pos]);
         key.push(raw[pos + 1]);
@@ -240,7 +242,7 @@ fn decode_ws_frame(Vec<byte> raw) -> Result<WsFrame, HttpError> {
         pos = pos + 4;
     }
     if raw.len() < pos + n {
-        http_err_bad_response()?;
+        http_err_protocol()?;
     }
     let payload = bytes_slice_resp(raw, pos, pos + n);
     if masked == 1 {
@@ -434,8 +436,8 @@ fn ws_next_mask(WsConn c) -> Vec<byte> {
 fn ws_write(WsConn c, Vec<byte> wire) -> Result<(), HttpError> {
     match write_all(c.conn.stream(), wire) {
         Result::Ok(_) => 0,
-        Result::Err(_) => {
-            http_fail_unit()?;
+        Result::Err(e) => {
+            http_fail_unit(e)?;
             0
         },
     };
@@ -513,14 +515,14 @@ fn ws_read_n(HttpConn c, int n) -> Result<Vec<byte>, HttpError> {
             Result::Ok(opt) => {
                 match opt {
                     Option::None => {
-                        http_err_bad_response()?;
+                        http_err_protocol()?;
                     },
                     Option::Some(got) => {
                         if got == 0 {
                             match wait_readable(s) {
                                 Result::Ok(_) => 0,
-                                Result::Err(_) => {
-                                    http_err_io()?;
+                                Result::Err(e) => {
+                                    http_err_io(e)?;
                                     0
                                 },
                             };
@@ -540,15 +542,15 @@ fn ws_read_n(HttpConn c, int n) -> Result<Vec<byte>, HttpError> {
             Result::Err(IoError::WouldBlock) => {
                 match wait_readable(s) {
                     Result::Ok(_) => 0,
-                    Result::Err(_) => {
-                        http_err_io()?;
+                    Result::Err(e) => {
+                        http_err_io(e)?;
                         0
                     },
                 };
                 0
             },
-            Result::Err(_) => {
-                http_err_io()?;
+            Result::Err(e) => {
+                http_err_io(e)?;
                 0
             },
         };
@@ -590,7 +592,7 @@ fn ws_read_frame(WsConn c) -> Result<WsFrame, HttpError> {
             }
         }
         if n > ws_max_payload() {
-            http_err_bad_response()?;
+            http_err_protocol()?;
         }
         let body = ws_read_n(c.conn, n)?;
         return decode_ws_frame(concat_bytes(hdr, body))?;
@@ -607,15 +609,15 @@ fn ws_recv(WsConn c) -> Result<WsFrame, HttpError> {
     let f = ws_read_frame(c)?;
     if c.role == 1 {
         if f.masked == 1 {
-            http_err_bad_response()?;
+            http_err_protocol()?;
         }
     } else {
         if f.masked == 0 {
-            http_err_bad_response()?;
+            http_err_protocol()?;
         }
     }
     if f.fin == 0 {
-        http_err_bad_response()?;
+        http_err_protocol()?;
     }
     return f;
 }
@@ -634,17 +636,17 @@ fn ws_wrap(HttpConn conn, int role, int seed) -> WsConn {
 
 fn ws_check_upgrade_resp(Response r, string key) -> Result<(), HttpError> {
     if r.status != 101 {
-        http_err_bad_response()?;
+        http_err_protocol()?;
     }
     if ws_contains_ci(ws_header_get_resp(r, "Upgrade"), "websocket") == 0 {
-        http_err_bad_response()?;
+        http_err_protocol()?;
     }
     if ws_contains_ci(ws_header_get_resp(r, "Connection"), "upgrade") == 0 {
-        http_err_bad_response()?;
+        http_err_protocol()?;
     }
     let got = ws_header_get_resp(r, "Sec-WebSocket-Accept");
     if got != ws_accept_key(key) {
-        http_err_bad_response()?;
+        http_err_protocol()?;
     }
     return ();
 }
@@ -656,13 +658,13 @@ fn ws_open_stream(Url u, bool verify, string ca_pem) -> Result<Stream, HttpError
     if scheme == "ws" {
         return match tcp_connect(host, port) {
             Result::Ok(s) => s,
-            Result::Err(_) => http_fail_stream()?,
+            Result::Err(e) => http_fail_stream(e)?,
         };
     }
     if scheme == "wss" {
         let s = match tcp_connect(host, port) {
             Result::Ok(v) => v,
-            Result::Err(_) => http_fail_stream()?,
+            Result::Err(e) => http_fail_stream(e)?,
         };
         let ca = Option::None;
         if ca_pem != "" {
@@ -670,25 +672,24 @@ fn ws_open_stream(Url u, bool verify, string ca_pem) -> Result<Stream, HttpError
         }
         return match tls_enable(s, host, new ClientOpts(verify, ca, Option::None, 5000, "")) {
             Result::Ok(v) => v,
-            Result::Err(_) => {
+            Result::Err(e) => {
                 match io_close(s) {
                     Result::Ok(_) => 0,
                     Result::Err(_) => 0,
                 };
-                http_fail_stream()?
+                http_fail_tls(e)?
             },
         };
     }
-    http_err_unsupported_scheme()?;
-    return http_fail_stream()?;
+    raise HttpError::UnsupportedScheme;
 }
 
 fn ws_handshake_client(HttpConn c, Url u, string key) -> Result<WsConn, HttpError> {
     match write_all(c.stream(), build_ws_upgrade_request(u, key)) {
         Result::Ok(_) => 0,
-        Result::Err(_) => {
+        Result::Err(e) => {
             close_conn(c);
-            http_fail_unit()?;
+            http_fail_unit(e)?;
             0
         },
     };
@@ -748,15 +749,15 @@ fn ws_connect_key(string url, string key) -> Result<WsConn, HttpError> {
 
 fn ws_upgrade(HttpConn c, IncomingRequest req) -> Result<WsConn, HttpError> {
     if ws_is_upgrade_req(req) == 0 {
-        http_err_bad_response()?;
+        http_err_protocol()?;
     }
     let key = ws_header_get_req(req, "Sec-WebSocket-Key");
     let accept = ws_accept_key(key);
     match write_all(c.stream(), encode_ws_upgrade_response(accept)) {
         Result::Ok(_) => 0,
-        Result::Err(_) => {
+        Result::Err(e) => {
             close_conn(c);
-            http_fail_unit()?;
+            http_fail_unit(e)?;
             0
         },
     };
@@ -766,12 +767,12 @@ fn ws_upgrade(HttpConn c, IncomingRequest req) -> Result<WsConn, HttpError> {
 /// Accept one TCP connection, read an HTTP/1.1 upgrade, return the WebSocket.
 fn ws_serve_once(Server srv) -> Result<WsConn, HttpError> {
     let listener = match srv.listener {
-        Option::None => http_fail_stream()?,
+        Option::None => http_not_bound()?,
         Option::Some(s) => s,
     };
     let conn = match accept_wait(listener) {
         Result::Ok(s) => s,
-        Result::Err(_) => http_fail_stream()?,
+        Result::Err(e) => http_fail_stream(e)?,
     };
     let c = HttpConn::wrap(conn);
     let raw = match read_http_message(c) {

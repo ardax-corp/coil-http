@@ -7,7 +7,7 @@ use tls::{alpn_protocol};
 use io::sync::{accept_wait, write_all};
 use task::{scope, Scope};
 
-use http::url::{HttpError, Headers, http_err_bad_response, http_err_not_supported, http_fail_stream, http_fail_unit};
+use http::url::{HttpError, Headers, http_err_protocol, http_err_not_supported, http_fail_stream, http_fail_unit, http_fail_tls, http_fail_tls_unit, http_not_bound};
 use http::h1::{IncomingRequest, encode_response, encode_response_keepalive, incoming_wants_close, parse_request};
 use http::response::{Response};
 use http::conn::{HttpConn, close_conn, read_http_message};
@@ -44,7 +44,7 @@ impl Server {
     pub fn bind(string host, int port) -> Result<(), HttpError> {
         let listener = match listen(host, port) {
             Result::Ok(s) => s,
-            Result::Err(_) => http_fail_stream()?,
+            Result::Err(e) => http_fail_stream(e)?,
         };
         self.host = host;
         self.port = port;
@@ -63,17 +63,17 @@ impl Server {
             Option::None => true,
             Option::Some(_) => false,
         } {
-            http_fail_unit()?;
+            http_not_bound()?;
             return 0;
         }
         let s = match self.listener {
             Option::Some(v) => v,
-            Option::None => http_fail_stream()?,
+            Option::None => http_not_bound()?,
         };
         let addr = match local_addr(s) {
             Result::Ok(t) => t,
-            Result::Err(_) => {
-                http_fail_unit()?;
+            Result::Err(e) => {
+                http_fail_unit(e)?;
                 return 0;
             },
         };
@@ -116,18 +116,18 @@ fn serve_conn_once(Server srv, Stream s, HttpHandler handler) -> Result<(), Http
 /// (dict-passing `<H: HttpHandler>` does not park WouldBlock).
 fn serve_once(Server srv, HttpHandler handler) -> Result<(), HttpError> {
     let listener = match srv.listener {
-        Option::None => http_fail_stream()?,
+        Option::None => http_not_bound()?,
         Option::Some(s) => s,
     };
     let conn = match accept_wait(listener) {
         Result::Ok(s) => s,
-        Result::Err(_) => http_fail_stream()?,
+        Result::Err(e) => http_fail_stream(e)?,
     };
     let stream = conn;
     if srv.use_tls == 1 {
         stream = match tls_server_enable(conn, new ServerOpts(srv.tls_cert, srv.tls_key, 0, "", "")) {
             Result::Ok(s) => s,
-            Result::Err(_) => http_fail_stream()?,
+            Result::Err(e) => http_fail_tls(e)?,
         };
     }
     return serve_conn_once(srv, stream, handler)?;
@@ -184,18 +184,18 @@ fn serve_conn_loop(Stream s, HttpHandler handler) -> Result<(), HttpError> {
 /// Accept one TCP connection and serve HTTP/1.1 until the client closes or sends `Connection: close`.
 fn serve_one_client(Server srv, HttpHandler handler) -> Result<(), HttpError> {
     let listener = match srv.listener {
-        Option::None => http_fail_stream()?,
+        Option::None => http_not_bound()?,
         Option::Some(s) => s,
     };
     let conn = match accept_wait(listener) {
         Result::Ok(s) => s,
-        Result::Err(_) => http_fail_stream()?,
+        Result::Err(e) => http_fail_stream(e)?,
     };
     let stream = conn;
     if srv.use_tls == 1 {
         stream = match tls_server_enable(conn, new ServerOpts(srv.tls_cert, srv.tls_key, 0, "", "")) {
             Result::Ok(s) => s,
-            Result::Err(_) => http_fail_stream()?,
+            Result::Err(e) => http_fail_tls(e)?,
         };
     }
     return serve_conn_loop(stream, handler)?;
@@ -229,7 +229,7 @@ fn serve_accepted(Server srv, Stream conn, HttpHandler handler) -> int {
 /// fails, after the open connections finished.
 fn serve(Server srv, HttpHandler handler) -> Result<(), HttpError> {
     let listener = match srv.listener {
-        Option::None => http_fail_stream()?,
+        Option::None => http_not_bound()?,
         Option::Some(s) => s,
     };
     let _ = scope(
@@ -268,8 +268,8 @@ fn h2_write_bytes(Stream s, Vec<byte> wire) -> Result<(), HttpError> {
     }
     match write_all(s, wire) {
         Result::Ok(_) => 0,
-        Result::Err(_) => {
-            http_fail_unit()?;
+        Result::Err(e) => {
+            http_fail_unit(e)?;
             0
         },
     };
@@ -529,16 +529,16 @@ fn h2_accept_one(Server srv, Stream conn, HttpHandler handler, int once) -> Resu
     if srv.use_tls == 1 {
         stream = match tls_server_enable(conn, new ServerOpts(srv.tls_cert, srv.tls_key, 5000, "", h2_server_alpn())) {
             Result::Ok(s) => s,
-            Result::Err(_) => {
+            Result::Err(e) => {
                 h2_close_stream(conn);
-                http_fail_stream()?
+                http_fail_tls(e)?
             },
         };
         let proto = match alpn_protocol(stream) {
             Result::Ok(p) => p,
-            Result::Err(_) => {
+            Result::Err(e) => {
                 h2_close_stream(stream);
-                http_fail_unit()?;
+                http_fail_tls_unit(e)?;
                 ""
             },
         };
@@ -556,12 +556,12 @@ fn h2_accept_one(Server srv, Stream conn, HttpHandler handler, int once) -> Resu
 /// ALPN `http/1.1` (or empty) is served as HTTP/1.1 through the same handler.
 fn h2_serve_once(Server srv, HttpHandler handler) -> Result<(), HttpError> {
     let listener = match srv.listener {
-        Option::None => http_fail_stream()?,
+        Option::None => http_not_bound()?,
         Option::Some(s) => s,
     };
     let conn = match accept_wait(listener) {
         Result::Ok(s) => s,
-        Result::Err(_) => http_fail_stream()?,
+        Result::Err(e) => http_fail_stream(e)?,
     };
     return h2_accept_one(srv, conn, handler, 1)?;
 }
@@ -570,7 +570,7 @@ fn h2_serve_once(Server srv, HttpHandler handler) -> Result<(), HttpError> {
 /// With `Server.tls`, ALPN `h2` is HTTP/2 and any other selection is HTTP/1.1.
 fn h2_serve_all(Server srv, HttpHandler handler) -> Result<(), HttpError> {
     let listener = match srv.listener {
-        Option::None => http_fail_stream()?,
+        Option::None => http_not_bound()?,
         Option::Some(s) => s,
     };
     let keep = 1;

@@ -7,7 +7,7 @@ use http::url::{
     bytes_to_string,
     find_bytes,
     header_name_eq_ci,
-    http_err_bad_response,
+    http_err_protocol,
 };
 use http::request::{concat_bytes};
 use http::response::{Response, find_crlf, find_header_end, bytes_slice_resp, parse_int_bytes, decode_chunked_body as resp_decode_chunked, encode_chunked_body as resp_encode_chunked, transfer_encoding_is_chunked};
@@ -75,14 +75,14 @@ fn connection_is_close(Headers h) -> int {
 fn parse_request(Vec<byte> raw) -> Result<IncomingRequest, HttpError> {
     let sep = find_header_end(raw);
     if sep == 999999 {
-        http_err_bad_response()?;
+        http_err_protocol()?;
     }
     let header_bytes = bytes_slice_resp(raw, 0, sep);
     let rest = bytes_slice_resp(raw, sep + 4, raw.len());
 
     let eol0 = find_crlf(header_bytes, 0);
     if eol0 == 999999 {
-        http_err_bad_response()?;
+        http_err_protocol()?;
     }
     let line = bytes_slice_resp(header_bytes, 0, eol0);
     let sp: byte = " ";
@@ -97,7 +97,7 @@ fn parse_request(Vec<byte> raw) -> Result<IncomingRequest, HttpError> {
         mi = mi + 1;
     }
     if m_end == 999999 {
-        http_err_bad_response()?;
+        http_err_protocol()?;
     }
     let method = bytes_to_string(bytes_slice_resp(line, 0, m_end))?;
 
@@ -112,7 +112,7 @@ fn parse_request(Vec<byte> raw) -> Result<IncomingRequest, HttpError> {
         pj = pj + 1;
     }
     if p_end == 999999 {
-        http_err_bad_response()?;
+        http_err_protocol()?;
     }
     let path = bytes_to_string(bytes_slice_resp(line, p_start, p_end))?;
 
@@ -158,7 +158,7 @@ fn parse_request(Vec<byte> raw) -> Result<IncomingRequest, HttpError> {
     } else {
         if cl != 999999 {
             if cl > rest.len() {
-                http_err_bad_response()?;
+                http_err_protocol()?;
             }
             if cl < rest.len() {
                 body = bytes_slice_resp(rest, 0, cl);

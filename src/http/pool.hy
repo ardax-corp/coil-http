@@ -11,6 +11,7 @@ use http::url::{
     url_host,
     url_port,
     url_scheme,
+    http_fail_tls,
 };
 use http::conn::{HttpConn, close_conn};
 
@@ -45,27 +46,26 @@ impl ConnPool {
         if scheme == "http" {
             return match tcp_connect(host, port) {
                 Result::Ok(s) => s,
-                Result::Err(_) => http_fail_stream()?,
+                Result::Err(e) => http_fail_stream(e)?,
             };
         }
         if scheme == "https" {
             let s = match tcp_connect(host, port) {
                 Result::Ok(s) => s,
-                Result::Err(_) => http_fail_stream()?,
+                Result::Err(e) => http_fail_stream(e)?,
             };
             return match tls_enable(s, host, new ClientOpts(true, Option::None, Option::None, 0, "")) {
                 Result::Ok(s) => s,
-                Result::Err(_) => {
+                Result::Err(e) => {
                     match close(s) {
                         Result::Ok(_) => 0,
                         Result::Err(_) => 0,
                     };
-                    http_fail_stream()?
+                    http_fail_tls(e)?
                 },
             };
         }
-        http_err_unsupported_scheme()?;
-        return http_fail_stream()?;
+        raise HttpError::UnsupportedScheme;
     }
 
     pub fn acquire(Url u) -> Result<HttpConn, HttpError> {
