@@ -2,5 +2,5 @@
 [[package]]
 name = 'tls'
 git = 'https://github.com/ardax-corp/coil-tls.git'
-rev = '61b4a8f502f768b67a3a6d9cb54c2e461029788f'
-content_hash = 'b90229678cbb0a45af1c70a3b827f50d38cb208c'
+rev = 'ff36416808ae96b6195543fb5a54d8e726c65d94'
+content_hash = '10be31d4ee7fd899c69623e252ea8be6446ef4b5'
