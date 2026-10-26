@@ -1,7 +1,7 @@
 // In-memory HTTP/2 connection: preface, frames, flow control, no sockets.
 // Socket loops call this session and write whatever `drain` queues.
 use conv::{int_to_dec};
-use io::{Stream};
+use io::{Stream, IoError};
 use io::net::tcp::connect as tcp_connect;
 use io::sync::{write_all};
 use tls::client::{enable as tls_enable, ClientOpts};
@@ -11,12 +11,14 @@ use http::url::{
     Headers,
     Url,
     bytes_slice,
-    http_err_bad_response,
+    http_err_protocol,
     http_err_bad_url,
     http_err_io,
     http_fail_stream,
     http_fail_unit,
     parse_url,
+    http_fail_tls,
+    http_fail_tls_unit,
 };
 use http::hpack::{HpackTable, decode_header_block_with, encode_header_block_with, hpack_table_resize};
 use http::response::{Response};
@@ -291,7 +293,7 @@ impl H2Session {
             self.queue_frame(goaway_frame(self.last_peer_stream, code));
         }
         self.conn_err = 1;
-        http_err_bad_response()?;
+        http_err_protocol()?;
         return ();
     }
 
@@ -305,7 +307,7 @@ impl H2Session {
         let i = 0;
         while i < check {
             if self.buf[i] != want[i] {
-                http_err_bad_response()?;
+                http_err_protocol()?;
             }
             i = i + 1;
         }
@@ -965,7 +967,7 @@ impl H2Session {
 
     pub fn feed(Vec<byte> chunk) -> Result<(), HttpError> {
         if self.conn_err == 1 {
-            http_err_bad_response()?;
+            http_err_protocol()?;
         }
         let i = 0;
         while i < chunk.len() {
@@ -1183,11 +1185,11 @@ impl H2Session {
         }
         if self.goaway_recv == 1 {
             if sid > self.goaway_last {
-                http_err_bad_response()?;
+                http_err_protocol()?;
             }
         }
         if self.local_streams >= self.peer_max_streams {
-            http_err_bad_response()?;
+            http_err_protocol()?;
         }
         if self.find_id(sid) != 999999 {
             return self.fail_conn(h2_err_protocol())?;
@@ -1215,7 +1217,7 @@ impl H2Session {
     pub fn queue_response(int sid, int status, Headers fields, Vec<byte> body, Headers trailers) -> Result<(), HttpError> {
         let idx = self.find_id(sid);
         if idx == 999999 {
-            http_err_bad_response()?;
+            http_err_protocol()?;
         }
         let hs = Headers::new();
         hs.add(":status", int_to_dec(status));
@@ -1305,7 +1307,7 @@ impl H2Session {
     pub fn stream_headers(int sid) -> Result<Headers, HttpError> {
         let idx = self.find_id(sid);
         if idx == 999999 {
-            http_err_bad_response()?;
+            http_err_protocol()?;
         }
         return self.headers_from_flat(idx, self.hnum, self.names, self.values);
     }
@@ -1313,7 +1315,7 @@ impl H2Session {
     pub fn stream_trailers(int sid) -> Result<Headers, HttpError> {
         let idx = self.find_id(sid);
         if idx == 999999 {
-            http_err_bad_response()?;
+            http_err_protocol()?;
         }
         return self.headers_from_flat(idx, self.tnum, self.tnames, self.tvalues);
     }
@@ -1321,7 +1323,7 @@ impl H2Session {
     pub fn stream_body(int sid) -> Result<Vec<byte>, HttpError> {
         let idx = self.find_id(sid);
         if idx == 999999 {
-            http_err_bad_response()?;
+            http_err_protocol()?;
         }
         let off = self.bstart[idx];
         return bytes_slice(self.blob, off, off + self.blen[idx]);
@@ -1330,7 +1332,7 @@ impl H2Session {
     pub fn stream_ended(int sid) -> Result<int, HttpError> {
         let idx = self.find_id(sid);
         if idx == 999999 {
-            http_err_bad_response()?;
+            http_err_protocol()?;
         }
         return self.ended[idx];
     }
@@ -1338,17 +1340,17 @@ impl H2Session {
     pub fn stream_reset(int sid) -> Result<int, HttpError> {
         let idx = self.find_id(sid);
         if idx == 999999 {
-            http_err_bad_response()?;
+            http_err_protocol()?;
         }
         return self.reset[idx];
     }
 
     pub fn stream_id_at(int i) -> Result<int, HttpError> {
         if i < 0 {
-            http_err_bad_response()?;
+            http_err_protocol()?;
         }
         if i >= self.ids.len() {
-            http_err_bad_response()?;
+            http_err_protocol()?;
         }
         return self.ids[i];
     }
@@ -1367,10 +1369,10 @@ impl H2Session {
 
     pub fn push_promised_id(int i) -> Result<int, HttpError> {
         if i < 0 {
-            http_err_bad_response()?;
+            http_err_protocol()?;
         }
         if i >= self.push_ids.len() {
-            http_err_bad_response()?;
+            http_err_protocol()?;
         }
         return self.push_ids[i];
     }
@@ -1386,7 +1388,7 @@ impl H2Session {
             i = i + 1;
         }
         if idx == 999999 {
-            http_err_bad_response()?;
+            http_err_protocol()?;
         }
         let skip = 0;
         let j = 0;
@@ -1430,8 +1432,8 @@ fn h2s_write(Stream s, Vec<byte> b) -> Result<(), HttpError> {
     }
     match write_all(s, b) {
         Result::Ok(_) => 0,
-        Result::Err(_) => {
-            http_fail_unit()?;
+        Result::Err(e) => {
+            http_fail_unit(e)?;
             0
         },
     };
@@ -1490,14 +1492,14 @@ fn h2_pump(Stream s, H2Session sess, int sid1, int sid2, int want2) -> Result<()
         guard = guard + 1;
     }
     h2_close(s);
-    http_err_bad_response()?;
+    http_err_protocol()?;
     return ();
 }
 
 fn h2_response_of(H2Session sess, int sid) -> Result<Response, HttpError> {
     let ended = sess.stream_ended(sid)?;
     if ended == 0 {
-        http_err_bad_response()?;
+        http_err_protocol()?;
     }
     let h = sess.stream_headers(sid)?;
     let body = sess.stream_body(sid)?;
@@ -1604,9 +1606,9 @@ fn h2_tls_enable(Stream tcp, string host, bool verify, string ca_pem) -> Result<
     }
     let s = match tls_enable(tcp, host, new ClientOpts(verify, ca, Option::None, 5000, h2_client_alpn())) {
         Result::Ok(v) => v,
-        Result::Err(_) => {
+        Result::Err(e) => {
             h2_close(tcp);
-            http_fail_stream()?
+            http_fail_tls(e)?
         },
     };
     return s;
@@ -1617,14 +1619,14 @@ fn h2_request_on_url(string url, string method, Headers extra, Vec<byte> body, b
     if u.scheme == "https" {
         let tcp = match tcp_connect(u.host, u.port) {
             Result::Ok(v) => v,
-            Result::Err(_) => http_fail_stream()?,
+            Result::Err(e) => http_fail_stream(e)?,
         };
         let s = h2_tls_enable(tcp, u.host, verify, ca_pem)?;
         let proto = match alpn_protocol(s) {
             Result::Ok(p) => p,
-            Result::Err(_) => {
+            Result::Err(e) => {
                 h2_close(s);
-                http_err_io()?;
+                http_fail_tls_unit(e)?;
                 ""
             },
         };
@@ -1638,7 +1640,7 @@ fn h2_request_on_url(string url, string method, Headers extra, Vec<byte> body, b
     }
     let tcp = match tcp_connect(u.host, u.port) {
         Result::Ok(v) => v,
-        Result::Err(_) => http_fail_stream()?,
+        Result::Err(e) => http_fail_stream(e)?,
     };
     return h2_exchange_on(tcp, u, method, extra, body)?;
 }
@@ -1672,7 +1674,7 @@ fn h2_connect_two(string url_a, string url_b) -> Result<H2Pair, HttpError> {
     }
     let tcp = match tcp_connect(a.host, a.port) {
         Result::Ok(v) => v,
-        Result::Err(_) => http_fail_stream()?,
+        Result::Err(e) => http_fail_stream(e)?,
     };
     return h2_exchange_two_on(tcp, a, b)?;
 }
@@ -1771,14 +1773,14 @@ fn h2_slot_dial(H2ClientSlot slot, Url u, string key, string method, Headers ext
     if u.scheme == "https" {
         let tcp = match tcp_connect(u.host, u.port) {
             Result::Ok(v) => v,
-            Result::Err(_) => http_fail_stream()?,
+            Result::Err(e) => http_fail_stream(e)?,
         };
         let s = h2_tls_enable(tcp, u.host, true, "")?;
         let proto = match alpn_protocol(s) {
             Result::Ok(p) => p,
-            Result::Err(_) => {
+            Result::Err(e) => {
                 h2_close(s);
-                http_err_io()?;
+                http_fail_tls_unit(e)?;
                 ""
             },
         };
@@ -1792,7 +1794,7 @@ fn h2_slot_dial(H2ClientSlot slot, Url u, string key, string method, Headers ext
     }
     let tcp = match tcp_connect(u.host, u.port) {
         Result::Ok(v) => v,
-        Result::Err(_) => http_fail_stream()?,
+        Result::Err(e) => http_fail_stream(e)?,
     };
     return h2_slot_run_first(slot, tcp, u, key, method, extra, body)?;
 }
@@ -1804,12 +1806,12 @@ fn h2_slot_exchange(H2ClientSlot slot, string url, string method, Headers extra,
     if h2_slot_can_reuse(slot, key) == 1 {
         let sid = slot.next;
         let s = match slot.stream {
-            Option::None => http_fail_stream()?,
+            Option::None => http_fail_stream(IoError::AlreadyClosed)?,
             Option::Some(v) => v,
         };
         let sess = match slot.sess {
             Option::None => {
-                http_err_bad_response()?;
+                http_err_protocol()?;
                 H2Session::client()
             },
             Option::Some(v) => v,

@@ -1,7 +1,7 @@
 // Pure unit tests: response parse (no sockets).
 use tests::assert;
 use string::{to_bytes};
-use http::url::{find_bytes};
+use http::url::{find_bytes, HttpError};
 use http::response::{
     header_count,
     header_get,
@@ -76,8 +76,8 @@ test("reject truncated body shorter than content-length") {
     let r = parse_response(raw);
     assert!(match r {
         Result::Ok(_) => false,
-        Result::Err(_) => true,
-    }, "expected BadResponse for truncated body");
+        Result::Err(e) => e == HttpError::Protocol,
+    }, "expected Protocol for truncated body");
 }
 
 test("reject response without header terminator") {
@@ -85,8 +85,8 @@ test("reject response without header terminator") {
     let r = parse_response(raw);
     assert!(match r {
         Result::Ok(_) => false,
-        Result::Err(_) => true,
-    }, "expected bad response Err");
+        Result::Err(e) => e == HttpError::Protocol,
+    }, "expected Protocol without header terminator");
 }
 
 test("header_get missing returns empty") {

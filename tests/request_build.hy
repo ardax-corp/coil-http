@@ -1,6 +1,7 @@
 use tests::assert;
 use string::{to_bytes};
 use http::url::{
+    HttpError,
     empty_headers,
     find_bytes,
     headers_have_crlf,
@@ -230,6 +231,6 @@ test("extras sanitize rejects injected header line") {
     let r = extras_sanitize(bad);
     assert!(match r {
         Result::Ok(_) => false,
-        Result::Err(_) => true,
-    }, "extras sanitize BadUrl");
+        Result::Err(e) => e == HttpError::InvalidHeader,
+    }, "extras sanitize InvalidHeader");
 }

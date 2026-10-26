@@ -6,7 +6,7 @@ use http::url::{
     Headers,
     bytes_to_string,
     header_name_eq_ci,
-    http_err_bad_response,
+    http_err_protocol,
 };
 
 /// Parsed HTTP response (status, headers, body, optional trailing fields).
@@ -162,7 +162,7 @@ fn parse_status_code(Vec<byte> line) -> Result<int, HttpError> {
         i = i + 1;
     }
     if i <= start {
-        http_err_bad_response()?;
+        http_err_protocol()?;
     }
     let code = 0;
     let j = start;
@@ -176,7 +176,7 @@ fn parse_status_code(Vec<byte> line) -> Result<int, HttpError> {
 fn parse_int_bytes(Vec<byte> b) -> Result<int, HttpError> {
     let n = b.len();
     if n == 0 {
-        http_err_bad_response()?;
+        http_err_protocol()?;
     }
     let v = 0;
     let i = 0;
@@ -213,7 +213,7 @@ fn append_header_line(Vec<string> names, Vec<string> values, Vec<byte> line) -> 
     let sp: byte = " ";
     let cpos = find_byte(line, colon);
     if cpos == 999999 {
-        http_err_bad_response()?;
+        http_err_protocol()?;
     }
     let name_b = bytes_slice_resp(line, 0, cpos);
     let val_start = cpos + 1;
@@ -283,7 +283,7 @@ fn collect_header_pairs(Vec<byte> header_bytes, Vec<string> names, Vec<string> v
 fn parse_chunk_size_line(Vec<byte> line) -> Result<int, HttpError> {
     let n = line.len();
     if n == 0 {
-        http_err_bad_response()?;
+        http_err_protocol()?;
     }
     let v = 0;
     let i = 0;
@@ -298,14 +298,14 @@ fn parse_chunk_size_line(Vec<byte> line) -> Result<int, HttpError> {
         }
         let d = hex_val(c) ?? -1;
         if d < 0 {
-            http_err_bad_response()?;
+            http_err_protocol()?;
         }
         v = v * 16 + d;
         saw = 1;
         i = i + 1;
     }
     if saw == 0 {
-        http_err_bad_response()?;
+        http_err_protocol()?;
     }
     return v;
 }
@@ -348,7 +348,7 @@ fn decode_chunked_into(Vec<byte> raw, Vec<byte> out) -> Result<int, HttpError> {
     while pos < n {
         let eol = find_crlf(raw, pos);
         if eol == 999999 {
-            http_err_bad_response()?;
+            http_err_protocol()?;
         }
         let line = bytes_slice_resp(raw, pos, eol);
         let size = parse_chunk_size_line(line)?;
@@ -357,17 +357,17 @@ fn decode_chunked_into(Vec<byte> raw, Vec<byte> out) -> Result<int, HttpError> {
             while pos < n {
                 let teol = find_crlf(raw, pos);
                 if teol == 999999 {
-                    http_err_bad_response()?;
+                    http_err_protocol()?;
                 }
                 if teol == pos {
                     return teol + 2;
                 }
                 pos = teol + 2;
             }
-            http_err_bad_response()?;
+            http_err_protocol()?;
         }
         if pos + size + 2 > n {
-            http_err_bad_response()?;
+            http_err_protocol()?;
         }
         let chunk = bytes_slice_resp(raw, pos, pos + size);
         let j = 0;
@@ -377,14 +377,14 @@ fn decode_chunked_into(Vec<byte> raw, Vec<byte> out) -> Result<int, HttpError> {
         }
         pos = pos + size;
         if raw[pos] != crlf[0] {
-            http_err_bad_response()?;
+            http_err_protocol()?;
         }
         if raw[pos + 1] != crlf[1] {
-            http_err_bad_response()?;
+            http_err_protocol()?;
         }
         pos = pos + 2;
     }
-    http_err_bad_response()?;
+    http_err_protocol()?;
     return 0;
 }
 
@@ -433,7 +433,7 @@ fn encode_chunked_body(Vec<byte> body) -> Result<Vec<byte>, HttpError> {
 fn http_framed_end(Vec<byte> raw) -> Result<int, HttpError> {
     let sep = find_header_end(raw);
     if sep == 999999 {
-        http_err_bad_response()?;
+        http_err_protocol()?;
     }
     let header_bytes = bytes_slice_resp(raw, 0, sep);
     let names: Vec<string> = Vec::new();
@@ -450,7 +450,7 @@ fn http_framed_end(Vec<byte> raw) -> Result<int, HttpError> {
     if content_length != 999999 {
         end = sep + 4 + content_length;
         if end > raw.len() {
-            http_err_bad_response()?;
+            http_err_protocol()?;
         }
     }
     return end;
@@ -472,7 +472,7 @@ fn header_block_body_len(Vec<byte> header_bytes) -> Result<int, HttpError> {
 fn parse_response(Vec<byte> raw) -> Result<Response, HttpError> {
     let sep = find_header_end(raw);
     if sep == 999999 {
-        http_err_bad_response()?;
+        http_err_protocol()?;
     }
     let header_bytes = bytes_slice_resp(raw, 0, sep);
     let rest = bytes_slice_resp(raw, sep + 4, raw.len());
@@ -492,7 +492,7 @@ fn parse_response(Vec<byte> raw) -> Result<Response, HttpError> {
     let body = rest;
     if content_length != 999999 {
         if content_length > rest.len() {
-            http_err_bad_response()?;
+            http_err_protocol()?;
         }
         if content_length < rest.len() {
             body = bytes_slice_resp(rest, 0, content_length);

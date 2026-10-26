@@ -1,7 +1,7 @@
 // Per-connection HTTP/1.1 framed reads (headers + Content-Length body).
 use io::{Stream, close, read, IoError, wait_readable};
 use io::sync::{read_exact};
-use http::url::{HttpError, http_err_bad_response, http_err_io, http_fail_unit};
+use http::url::{HttpError, http_err_protocol, http_err_io, http_fail_unit};
 use http::request::{concat_bytes};
 use http::response::{bytes_slice_resp, find_header_end, header_block_body_len, parse_chunk_size_line};
 
@@ -91,18 +91,18 @@ fn read_n(HttpConn c, int n) -> Result<Vec<byte>, HttpError> {
     }
     let got = match read_exact(c.inner, buf) {
         Result::Ok(o) => o,
-        Result::Err(_) => {
-            http_err_io()?;
+        Result::Err(e) => {
+            http_err_io(e)?;
             Option::None
         },
     };
     match got {
         Option::None => {
-            http_err_bad_response()?;
+            http_err_protocol()?;
         },
         Option::Some(m) => {
             if m < need {
-                http_err_bad_response()?;
+                http_err_protocol()?;
             }
             let j = 0;
             while j < need {
@@ -131,7 +131,7 @@ fn read_crlf_line(HttpConn c) -> Result<Vec<byte>, HttpError> {
         acc.push(b[0]);
         guard = guard + 1;
     }
-    http_err_bad_response()?;
+    http_err_protocol()?;
     return acc;
 }
 
@@ -175,13 +175,13 @@ fn read_chunked_wire(HttpConn c) -> Result<Vec<byte>, HttpError> {
             }
             let nl = read_n(c, 2)?;
             if nl.len() < 2 {
-                http_err_bad_response()?;
+                http_err_protocol()?;
             }
             if nl[0] != cr {
-                http_err_bad_response()?;
+                http_err_protocol()?;
             }
             if nl[1] != lf {
-                http_err_bad_response()?;
+                http_err_protocol()?;
             }
             acc.push(cr);
             acc.push(lf);
@@ -225,8 +225,8 @@ fn read_http_message(HttpConn c) -> Result<Vec<byte>, HttpError> {
                             guard = guard - 1;
                             Option::None
                         },
-                        Result::Err(_) => {
-                            http_err_io()?;
+                        Result::Err(e) => {
+                            http_err_io(e)?;
                             Option::None
                         },
                     }
@@ -257,8 +257,8 @@ fn read_http_message(HttpConn c) -> Result<Vec<byte>, HttpError> {
                                     guard = guard - 1;
                                     0
                                 },
-                                Result::Err(_) => {
-                                    http_err_io()?;
+                                Result::Err(e) => {
+                                    http_err_io(e)?;
                                     0
                                 },
                             };
@@ -273,7 +273,7 @@ fn read_http_message(HttpConn c) -> Result<Vec<byte>, HttpError> {
     }
     let sep = find_header_end(acc);
     if sep == 999999 {
-        http_fail_unit()?;
+        http_err_protocol()?;
     }
     let head = bytes_slice_resp(acc, 0, sep + 4);
     let extra = bytes_slice_resp(acc, sep + 4, acc.len());

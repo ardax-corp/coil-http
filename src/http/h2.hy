@@ -9,7 +9,7 @@ use http::url::{
     HttpError,
     Headers,
     Url,
-    http_err_bad_response,
+    http_err_protocol,
     http_err_io,
     http_fail_unit,
 };
@@ -223,11 +223,11 @@ fn frame_wire_len(Vec<byte> raw) -> int {
 /// Parse the first HTTP/2 frame in `raw`. Extra bytes after the frame are ignored.
 fn decode_frame(Vec<byte> raw) -> Result<H2Frame, HttpError> {
     if raw.len() < 9 {
-        http_err_bad_response()?;
+        http_err_protocol()?;
     }
     let n = u8_at(raw, 0) * 65536 + u8_at(raw, 1) * 256 + u8_at(raw, 2);
     if raw.len() < 9 + n {
-        http_err_bad_response()?;
+        http_err_protocol()?;
     }
     let typ = u8_at(raw, 3);
     let flags = u8_at(raw, 4);
@@ -298,7 +298,7 @@ fn encode_settings_payload(H2Settings s) -> Vec<byte> {
 fn decode_settings_payload(Vec<byte> raw) -> Result<H2Settings, HttpError> {
     let n = raw.len();
     if n % 6 != 0 {
-        http_err_bad_response()?;
+        http_err_protocol()?;
     }
     let s = H2Settings::new();
     let i = 0;
@@ -318,14 +318,14 @@ fn settings_ack_frame() -> H2Frame {
     return H2Frame::new(frame_type_settings(), flag_ack(), 0, payload);
 }
 
-/// Encode WINDOW_UPDATE increment (31-bit). Increment 0 is PROTOCOL_ERROR / BadResponse.
+/// Encode WINDOW_UPDATE increment (31-bit). Increment 0 is PROTOCOL_ERROR / Protocol.
 fn encode_window_update_payload(int increment) -> Result<Vec<byte>, HttpError> {
     if increment == 0 {
-        http_err_bad_response()?;
+        http_err_protocol()?;
     }
     let inc = increment % two31();
     if inc == 0 {
-        http_err_bad_response()?;
+        http_err_protocol()?;
     }
     let out: Vec<byte> = Vec::new();
     push_u32(out, inc);
@@ -335,11 +335,11 @@ fn encode_window_update_payload(int increment) -> Result<Vec<byte>, HttpError> {
 /// Decode 4-byte WINDOW_UPDATE. Reserved bit is cleared; increment 0 is an error.
 fn decode_window_update_payload(Vec<byte> raw) -> Result<int, HttpError> {
     if raw.len() != 4 {
-        http_err_bad_response()?;
+        http_err_protocol()?;
     }
     let inc = u32_at(raw, 0) % two31();
     if inc == 0 {
-        http_err_bad_response()?;
+        http_err_protocol()?;
     }
     return inc;
 }
@@ -360,7 +360,7 @@ fn encode_goaway_payload(int last_stream_id, int error_code) -> Vec<byte> {
 /// Decode GOAWAY. Requires at least 8 bytes; extra debug data is ignored.
 fn decode_goaway_payload(Vec<byte> raw) -> Result<H2Goaway, HttpError> {
     if raw.len() < 8 {
-        http_err_bad_response()?;
+        http_err_protocol()?;
     }
     let last = u32_at(raw, 0) % two31();
     let code = u32_at(raw, 4);
@@ -374,7 +374,7 @@ fn goaway_frame(int last_stream_id, int error_code) -> H2Frame {
 /// PING payload is exactly 8 bytes. `ack` nonzero sets the ACK flag.
 fn ping_frame(Vec<byte> payload, int ack) -> Result<H2Frame, HttpError> {
     if payload.len() != 8 {
-        http_err_bad_response()?;
+        http_err_protocol()?;
     }
     let flags = 0;
     if ack != 0 {
@@ -391,7 +391,7 @@ fn rst_stream_frame(int stream_id, int error_code) -> H2Frame {
 
 fn decode_rst_payload(Vec<byte> raw) -> Result<int, HttpError> {
     if raw.len() != 4 {
-        http_err_bad_response()?;
+        http_err_protocol()?;
     }
     return u32_at(raw, 0);
 }
@@ -409,7 +409,7 @@ fn headers_frame(int stream_id, Headers h, int end_stream) -> H2Frame {
 /// Decode HEADERS through `t` so later frames can use dynamic indices.
 fn headers_from_frame_with(H2Frame f, HpackTable t) -> Result<Headers, HttpError> {
     if f.typ != frame_type_headers() {
-        http_err_bad_response()?;
+        http_err_protocol()?;
     }
     return decode_header_block_with(f.payload, t)?;
 }
@@ -514,14 +514,14 @@ fn encode_push_promise_payload(int promised_id, Vec<byte> block) -> Vec<byte> {
 
 fn decode_push_promise_payload(Vec<byte> raw) -> Result<H2Push, HttpError> {
     if raw.len() < 4 {
-        http_err_bad_response()?;
+        http_err_protocol()?;
     }
     let promised = u32_at(raw, 0) % two31();
     if promised == 0 {
-        http_err_bad_response()?;
+        http_err_protocol()?;
     }
     if promised % 2 == 1 {
-        http_err_bad_response()?;
+        http_err_protocol()?;
     }
     let block = bytes_slice_resp(raw, 4, raw.len());
     return H2Push::new(promised, block);
@@ -680,7 +680,7 @@ fn h2_read_n_wait(Stream s, int n, int wait) -> Result<Vec<byte>, HttpError> {
                                 return empty;
                             }
                         }
-                        http_err_bad_response()?;
+                        http_err_protocol()?;
                     },
                     Option::Some(got) => {
                         if got == 0 {
@@ -692,8 +692,8 @@ fn h2_read_n_wait(Stream s, int n, int wait) -> Result<Vec<byte>, HttpError> {
                             }
                             match wait_readable(s) {
                                 Result::Ok(_) => 0,
-                                Result::Err(_) => {
-                                    http_err_io()?;
+                                Result::Err(e) => {
+                                    http_err_io(e)?;
                                     0
                                 },
                             };
@@ -719,15 +719,15 @@ fn h2_read_n_wait(Stream s, int n, int wait) -> Result<Vec<byte>, HttpError> {
                 }
                 match wait_readable(s) {
                     Result::Ok(_) => 0,
-                    Result::Err(_) => {
-                        http_err_io()?;
+                    Result::Err(e) => {
+                        http_err_io(e)?;
                         0
                     },
                 };
                 0
             },
-            Result::Err(_) => {
-                http_err_io()?;
+            Result::Err(e) => {
+                http_err_io(e)?;
                 0
             },
         };
@@ -735,7 +735,7 @@ fn h2_read_n_wait(Stream s, int n, int wait) -> Result<Vec<byte>, HttpError> {
     return buf;
 }
 
-/// Blocking read of `n` bytes. Waits on `WouldBlock`; EOF is BadResponse.
+/// Blocking read of `n` bytes. Waits on `WouldBlock`; EOF is Protocol.
 fn h2_read_n(Stream s, int n) -> Result<Vec<byte>, HttpError> {
     return h2_read_n_wait(s, n, 1)?;
 }
@@ -743,8 +743,8 @@ fn h2_read_n(Stream s, int n) -> Result<Vec<byte>, HttpError> {
 fn h2_write_frame(Stream s, H2Frame f) -> Result<(), HttpError> {
     match write_all(s, encode_frame(f)) {
         Result::Ok(_) => 0,
-        Result::Err(_) => {
-            http_fail_unit()?;
+        Result::Err(e) => {
+            http_fail_unit(e)?;
             0
         },
     };
@@ -758,7 +758,7 @@ fn h2_read_frame(Stream s) -> Result<H2Frame, HttpError> {
     let payload = h2_read_n(s, n)?;
     let raw = h2_cat(hdr, payload);
     if frame_wire_len(raw) != 9 + n {
-        http_err_bad_response()?;
+        http_err_protocol()?;
     }
     return decode_frame(raw)?;
 }
@@ -773,7 +773,7 @@ fn h2_try_read_frame(Stream s) -> Result<Option<H2Frame>, HttpError> {
     let payload = h2_read_n(s, n)?;
     let raw = h2_cat(hdr, payload);
     if frame_wire_len(raw) != 9 + n {
-        http_err_bad_response()?;
+        http_err_protocol()?;
     }
     let f = decode_frame(raw)?;
     return Option::Some(f);
@@ -798,9 +798,9 @@ fn h2_http11_exchange(Stream s, string method, Url u, Headers headers, Vec<byte>
     let msg = h2_cat(head, body);
     match write_all(s, msg) {
         Result::Ok(_) => 0,
-        Result::Err(_) => {
+        Result::Err(e) => {
             h2_close(s);
-            http_fail_unit()?;
+            http_fail_unit(e)?;
             0
         },
     };
