@@ -8,6 +8,7 @@ use http::url::{
     parse_url,
 };
 use http::request::{
+    Request,
     build_request_head,
     build_request_head_extras,
     build_request_head_keepalive,
@@ -287,4 +288,32 @@ test("build_request_head rejects a header with CR / LF") {
         },
         "InvalidHeader",
     );
+}
+
+test("reserved header names are matched in any case") {
+    let hs = empty_headers();
+    hs.add("hOST", "evil");
+    hs.add("content-Length", "999");
+    hs.add("CoNNeCTioN", "keep-alive");
+    hs.add("X-Ok", "1");
+    let extras = format_extra_headers_str(hs.names, hs.values);
+    assert!(extras == "X-Ok: 1\r\n", "only the custom header is kept");
+}
+
+test("Request::header drops mixed-case reserved names on the wire") {
+    let u = match parse_url("http://example.com/") {
+        Result::Ok(v) => v,
+        Result::Err(_) => panic "parse failed",
+    };
+    let req = Request::new();
+    req.header("content-Length", "999");
+    req.header("X-Ok", "1");
+    let msg = match build_request_head("GET", u, req.headers_val(), 0) {
+        Result::Ok(m) => m,
+        Result::Err(_) => panic "build",
+    };
+    let want = to_bytes(
+        "GET / HTTP/1.1\r\nHost: example.com\r\nX-Ok: 1\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+    );
+    assert!(msg == want, "caller content-Length dropped");
 }
