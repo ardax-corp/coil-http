@@ -2,21 +2,19 @@
 // `ws_connect_tls` to a `wss://` URL. Needs thread::spawn; coil test cannot.
 // Spawned workers dload ./native/libtls.so (empty FFI search_paths).
 use thread::{Sender, channel, join, recv, send as thread_send, spawn};
-use conv::{int_to_dec};
-use string::{to_bytes};
-use io::{stdout};
-use io::sync::{write_all};
-use http::server::{Server};
-use http::ws::{
-    ws_close,
-    ws_connect_tls,
-    ws_echo_loop,
-    ws_opcode_text,
-    ws_recv,
-    ws_send_close,
-    ws_send_text,
-    ws_serve_once,
-};
+use conv::int_to_dec;
+use string::to_bytes;
+use io::stdout;
+use io::sync::write_all;
+use http::server::Server;
+use http::ws::ws_close;
+use http::ws::ws_connect_tls;
+use http::ws::ws_echo_loop;
+use http::ws::ws_opcode_text;
+use http::ws::ws_recv;
+use http::ws::ws_send_close;
+use http::ws::ws_send_text;
+use http::ws::ws_serve_once;
 
 fn cert_pem() -> string {
     return "-----BEGIN CERTIFICATE-----\nMIIDTTCCAjWgAwIBAgIULZZHw6Gv1CG49dSJ/JsIWAC09uYwDQYJKoZIhvcNAQEL\nBQAwGzEZMBcGA1UEAwwQY29pbC10bHMtdGVzdC1jYTAeFw0yNjA4MjUxMjM2MTda\nFw0zNjA4MjIxMjM2MTdaMBQxEjAQBgNVBAMMCWxvY2FsaG9zdDCCASIwDQYJKoZI\nhvcNAQEBBQADggEPADCCAQoCggEBAKsFaAp1MrBsZ5AenNOJOrHdzVDnV1o2V42O\naTUbNRmzRF/IYXceRj5kGZQShs6kAaYzXRPog2hd2MZc60MjNqNBEfe3eZ12+E6J\nf/Rz44zbFXj2CO7bqf3NQhbKa+1oxpzx/GV2+4M5Z2FgOVRfxKYgoXDzn99NxBzK\nAr7E7Ggd3snXwBu6k/lvxf9wUbkj9FZyJTrSkMSoz5rfNzBBNFbAQT/TamJGmht9\ni/+wk2JwbxfH1cjrJamS+sN7DFPgELVsNJwr0BlkPNnrxiQEqJ7mj2Kj9hcfjIVx\nWUj/xenVHrBQ4FpvyX7WybT9M2BrkGWfOw+20qSuhIeCSqa4swcCAwEAAaOBjzCB\njDAJBgNVHRMEAjAAMA4GA1UdDwEB/wQEAwIFoDATBgNVHSUEDDAKBggrBgEFBQcD\nATAaBgNVHREEEzARgglsb2NhbGhvc3SHBH8AAAEwHQYDVR0OBBYEFH+Z4z5GgmrD\nGrruwTh5IpG4tBc+MB8GA1UdIwQYMBaAFAFFn3ZWMg3CtulzlnYkJs2ecKb+MA0G\nCSqGSIb3DQEBCwUAA4IBAQC97MSOUVZbYlUrwLun5ZQCJKkjIhHDezMmJJWFFg/t\nnWdYtOloWHmY0tOsa6tAvF+0zYc4YZdkpeSnbqH+Mk41znf+A/Js0i3JKK2hJ1Eu\nBQG64LjCnZwVKqLxrvxlzbKNIIEUwf0CktTCok7wlhYWYZK9b9+4soAPgF2KoIX3\nj6TnG3xBFF06rzybsbSaHKVn7flUaTxj+05NtLBbMdzqle3xQX3Dz34klFTQdkTl\nlGz1K09Rl6uVKsU1SgNsm5cxAOtW8HGDinTTPPCuoOBhXWUCWS9U9zsk20VQPH7q\nq5up6N6FnhYpQ5eBDWSeJryILFZkK8/tASxKgeyHHaBh\n-----END CERTIFICATE-----\n";
@@ -31,7 +29,7 @@ fn server_thread(Sender tx) {
     match srv.bind("127.0.0.1", 0) {
         Result::Ok(_) => 0,
         Result::Err(_) => panic "bind",
-    };
+    }
     srv.tls(cert_pem(), key_pem());
     let port = match srv.bound_port() {
         Result::Ok(p) => p,
@@ -40,7 +38,7 @@ fn server_thread(Sender tx) {
     match thread_send(tx, port) {
         Result::Ok(_) => 0,
         Result::Err(_) => panic "send port",
-    };
+    }
     let c = match ws_serve_once(srv) {
         Result::Ok(v) => v,
         Result::Err(_) => panic "upgrade",
@@ -48,7 +46,7 @@ fn server_thread(Sender tx) {
     match ws_echo_loop(c) {
         Result::Ok(_) => 0,
         Result::Err(_) => 0,
-    };
+    }
 }
 
 fn main() {
@@ -72,7 +70,7 @@ fn main() {
     match ws_send_text(c, "hello") {
         Result::Ok(_) => 0,
         Result::Err(_) => panic "send text",
-    };
+    }
     let t1 = match ws_recv(c) {
         Result::Ok(v) => v,
         Result::Err(_) => panic "recv text",
@@ -86,18 +84,18 @@ fn main() {
     match ws_send_close(c) {
         Result::Ok(_) => 0,
         Result::Err(_) => panic "close",
-    };
+    }
     match ws_recv(c) {
         Result::Ok(_) => 0,
         Result::Err(_) => 0,
-    };
+    }
     ws_close(c);
     match join(t) {
         Result::Ok(_) => 0,
         Result::Err(_) => 0,
-    };
+    }
     match write_all(stdout(), to_bytes("ok")) {
         Result::Ok(_) => 0,
         Result::Err(_) => 0,
-    };
+    }
 }
