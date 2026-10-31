@@ -183,7 +183,23 @@ fn sha1_process_block(Vec<int> h, Vec<byte> block, int off) {
     h[4] = sha1_add2(h[4], e);
 }
 
-/// SHA-1 digest (20 bytes, big-endian).
+/// The SHA-1 digest of `msg` (RFC 3174): 20 bytes, big-endian.
+///
+/// Here only for the WebSocket handshake (`ws_accept_key`); SHA-1 is not
+/// collision resistant, so do not use it for security.
+///
+/// # Examples
+///
+/// ```
+/// # use tests::assert;
+/// use http::sha1::sha1;
+/// use encoding::encode;
+/// use string::to_bytes;
+///
+/// let d = sha1(to_bytes("abc"));
+/// assert!(d.len() == 20);
+/// assert!(encode(d) == "qZk+NkcGgWq6PiVxeFDCbJzQ2J0=");
+/// ```
 fn sha1(Vec<byte> msg) -> Vec<byte> {
     let h: Vec<int> = Vec::new();
     h.push(sha1_from_be(103, 69, 35, 1));

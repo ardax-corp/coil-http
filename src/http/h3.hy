@@ -14,11 +14,13 @@ fn h3_not_supported() -> Result<(), HttpError> {
     return ();
 }
 
+/// HTTP/3 client placeholder. Always returns `NotSupported`; use HTTP/1.1 or HTTP/2.
 fn h3_connect(string url) -> Result<(), HttpError> {
     h3_not_supported()?;
     return ();
 }
 
+/// HTTP/3 server placeholder. Always returns `NotSupported`.
 fn h3_serve() -> Result<(), HttpError> {
     h3_not_supported()?;
     return ();

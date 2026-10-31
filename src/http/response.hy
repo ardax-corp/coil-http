@@ -9,18 +9,65 @@ use http::url::{
     http_err_protocol,
 };
 
-/// Parsed HTTP response (status, headers, body, optional trailing fields).
+/// An HTTP response: status, header fields, body and HTTP/2 trailing fields.
+///
+/// The client returns one for every request (`Client::get`, `send`, `h2_get`, ...).
+/// A server's `HttpHandler::handle` builds one with `Response::ok` and the setter
+/// methods. Header fields are kept in order with the case they were received or
+/// added with; look one up with `header_get`.
+///
+/// # Examples
+///
+/// Building a response in a handler:
+///
+/// ```
+/// # use tests::assert;
+/// use http::response::{Response, header_get};
+/// use string::to_bytes;
+///
+/// let r = Response::ok();
+/// r.status(201);
+/// r.header("Content-Type", "text/plain");
+/// r.body(to_bytes("created"));
+/// assert!(r.status == 201);
+/// assert!(header_get(r, "Content-Type") == "text/plain");
+/// assert!(r.body.len() == 7);
+/// ```
+///
+/// Reading one the client returned:
+///
+/// ```no_run
+/// use http::client::Client;
+/// use http::response::header_get;
+/// use string::from_bytes;
+///
+/// fn main() {
+///     let c = Client::new();
+///     let r = match c.get("http://example.com/") {
+///         Result::Ok(r) => r,
+///         Result::Err(e) => panic show(e),
+///     };
+///     let kind = header_get(r, "Content-Type");
+///     let text = from_bytes(r.body);
+/// }
+/// ```
 class Response {
+    /// Status code, such as 200 or 404.
     pub status: int,
+    /// Header field names, in order.
     pub header_names: Vec<string>,
+    /// Header field values; `header_values[i]` belongs to `header_names[i]`.
     pub header_values: Vec<string>,
+    /// Body bytes, already de-chunked.
     pub body: Vec<byte>,
+    /// Trailing field names (HTTP/2 only; empty on HTTP/1.1).
     pub trailer_names: Vec<string>,
+    /// Trailing field values; `trailer_values[i]` belongs to `trailer_names[i]`.
     pub trailer_values: Vec<string>,
 }
 
 impl Response {
-    /// 200 OK with empty body and headers.
+    /// A `200` response with no header fields and an empty body.
     pub static fn ok() -> Response {
         let names: Vec<string> = Vec::new();
         let values: Vec<string> = Vec::new();
@@ -30,20 +77,30 @@ impl Response {
         return new Response(200, names, values, body, trailer_names, trailer_values);
     }
 
+    /// Sets the status code.
+    ///
+    /// The HTTP/1.1 encoder writes a reason phrase for a few common codes and `OK`
+    /// for the rest; clients go by the code.
     pub fn status(int code) {
         self.status = code;
     }
 
+    /// Appends a header field.
+    ///
+    /// The server writes `Content-Length` and `Connection` itself, so do not add
+    /// those. Add
+    /// `Transfer-Encoding: chunked` to send the body chunked on HTTP/1.1.
     pub fn header(string name, string value) {
         self.header_names.push(name);
         self.header_values.push(value);
     }
 
+    /// Sets the body.
     pub fn body(Vec<byte> b) {
         self.body = b;
     }
 
-    /// Trailing header field, carried after the body on HTTP/2.
+    /// Appends a trailing field, sent after the body on HTTP/2. HTTP/1.1 does not send trailers.
     pub fn trailer(string name, string value) {
         self.trailer_names.push(name);
         self.trailer_values.push(value);
@@ -72,6 +129,25 @@ fn header_name_at_resp(Response r, int i) -> string {
     return r.header_names[i];
 }
 
+/// The value of the first header field of `r` named exactly `name`, or `""`.
+///
+/// The name comparison is case-sensitive: use the case the peer sent.
+///
+/// # Examples
+///
+/// ```
+/// # use tests::assert;
+/// use http::response::{header_get, parse_response};
+/// use string::to_bytes;
+///
+/// let raw = to_bytes("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 2\r\n\r\nhi");
+/// let r = match parse_response(raw) {
+///     Result::Ok(r) => r,
+///     Result::Err(e) => panic show(e),
+/// };
+/// assert!(header_get(r, "Content-Type") == "text/plain");
+/// assert!(header_get(r, "X-Missing") == "");
+/// ```
 fn header_get(Response r, string name) -> string {
     let i = 0;
     let n = r.header_names.len();
@@ -84,6 +160,7 @@ fn header_get(Response r, string name) -> string {
     return "";
 }
 
+/// The value of the first trailing field of `r` named exactly `name`, or `""`. Trailers arrive on HTTP/2 only.
 fn trailer_get(Response r, string name) -> string {
     let i = 0;
     let n = r.trailer_names.len();
@@ -340,7 +417,7 @@ fn crlf_bytes() -> Vec<byte> {
     return b;
 }
 
-/// Parse chunked `raw` into `out`. Returns byte count consumed, including the last chunk and trailers.
+// Parse chunked `raw` into `out`. Returns byte count consumed, including the last chunk and trailers.
 fn decode_chunked_into(Vec<byte> raw, Vec<byte> out) -> Result<int, HttpError> {
     let pos = 0;
     let n = raw.len();
@@ -388,14 +465,17 @@ fn decode_chunked_into(Vec<byte> raw, Vec<byte> out) -> Result<int, HttpError> {
     return 0;
 }
 
-/// Decode a chunked body (no headers). Returns decoded bytes. Truncated input errors.
+/// Decodes an HTTP/1.1 chunked body (no head) into its bytes.
+///
+/// Chunk extensions and trailer fields are skipped. Returns `Protocol` when the
+/// input is truncated or a chunk size is not hex.
 fn decode_chunked_body(Vec<byte> raw) -> Result<Vec<byte>, HttpError> {
     let out: Vec<byte> = Vec::new();
     decode_chunked_into(raw, out)?;
     return out;
 }
 
-/// Encode `body` as one chunk plus a terminating zero chunk.
+/// Encodes `body` as one chunk followed by the terminating zero-size chunk.
 fn encode_chunked_body(Vec<byte> body) -> Result<Vec<byte>, HttpError> {
     let hex = int_to_hex(body.len());
     let out = to_bytes(hex);
@@ -429,7 +509,11 @@ fn encode_chunked_body(Vec<byte> body) -> Result<Vec<byte>, HttpError> {
     return out;
 }
 
-/// Exclusive end index of the first HTTP/1.1 message in `raw` (headers + Content-Length or chunked body).
+/// The end offset (exclusive) of the first complete HTTP/1.1 message in `raw`.
+///
+/// The message is framed by `Transfer-Encoding: chunked`, by `Content-Length`, or
+/// ends at the blank line when it has neither. Bytes after the offset belong to
+/// the next message. Returns `Protocol` when `raw` holds no complete message.
 fn http_framed_end(Vec<byte> raw) -> Result<int, HttpError> {
     let sep = find_header_end(raw);
     if sep == 999999 {
@@ -456,8 +540,8 @@ fn http_framed_end(Vec<byte> raw) -> Result<int, HttpError> {
     return end;
 }
 
-/// Body length from a header block (no trailing CRLFCRLF required).
-/// `999999` = no Content-Length (empty body for keep-alive). `999998` = chunked (not framed here).
+// Body length from a header block (no trailing CRLFCRLF required).
+// `999999` = no Content-Length (empty body for keep-alive). `999998` = chunked (not framed here).
 fn header_block_body_len(Vec<byte> header_bytes) -> Result<int, HttpError> {
     let names: Vec<string> = Vec::new();
     let values: Vec<string> = Vec::new();
@@ -468,7 +552,28 @@ fn header_block_body_len(Vec<byte> header_bytes) -> Result<int, HttpError> {
     return content_length_from(names, values)?;
 }
 
-/// Parse raw HTTP/1.1 response bytes into `Response`.
+/// Parses a complete HTTP/1.1 response (head and body) into a `Response`.
+///
+/// A chunked body is decoded; a `Content-Length` body is cut to that length, and
+/// without either the rest of `raw` is the body. Returns `Protocol` when there is
+/// no blank line after the head, a header line has no `:`, the status code is
+/// missing, or the body is shorter than `Content-Length`.
+///
+/// # Examples
+///
+/// ```
+/// # use tests::assert;
+/// use http::response::parse_response;
+/// use string::to_bytes;
+///
+/// let raw = to_bytes("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n2\r\nhi\r\n0\r\n\r\n");
+/// let r = match parse_response(raw) {
+///     Result::Ok(r) => r,
+///     Result::Err(e) => panic show(e),
+/// };
+/// assert!(r.status == 200);
+/// assert!(r.body.len() == 2);
+/// ```
 fn parse_response(Vec<byte> raw) -> Result<Response, HttpError> {
     let sep = find_header_end(raw);
     if sep == 999999 {

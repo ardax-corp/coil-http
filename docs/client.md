@@ -58,15 +58,22 @@ Parsed responses expose `status`, `body`, and `header_get(r, "Name")`.
 | `Io(IoError)` | the socket failed; the `io` error is kept |
 | `Tls(TlsError)` | the TLS layer failed (`Certificate`, `Handshake`, or `Io(IoError)`) |
 
-```
-match client.get(url) {
-    Result::Ok(r) => r.status,
-    Result::Err(HttpError::Tls(TlsError::Certificate)) => 0,
-    Result::Err(HttpError::Io(IoError::TimedOut)) => 0,
-    Result::Err(e) => panic format("%v", e),
-};
+```coil
+use http::client::Client;
+use http::url::HttpError;
+use io::IoError;
+use tls::error::TlsError;
+
+fn status_or_zero(Client client, string url) -> int {
+    return match client.get(url) {
+        Result::Ok(r) => r.status,
+        Result::Err(HttpError::Tls(TlsError::Certificate)) => 0,
+        Result::Err(HttpError::Io(IoError::TimedOut)) => 0,
+        Result::Err(e) => panic show(e),
+    };
+}
 ```
 
 WebSocket URLs (`ws://`, `wss://`) use `http::ws::ws_connect`, not `Client::get`. See [ws.md](ws.md).
 
-HTTPS uses verified TLS (`webpki` roots via [coil-tls](https://github.com/ardax-corp/coil-tls)). Local dev certs need `tls::client::enable` with a `ClientOpts` (`verify: false` and/or `ca_pem`).
+HTTPS uses verified TLS (`webpki` roots via [coil-tls](https://github.com/ardax-corp/coil-tls)), and `Client` always verifies. For a local dev certificate, `h2_connect_tls(url, verify, ca_pem)` (`http::h2_session`) and `ws_connect_tls` take `verify: false` or a CA PEM; on your own stream, call `tls::client::enable` with a `ClientOpts`.
