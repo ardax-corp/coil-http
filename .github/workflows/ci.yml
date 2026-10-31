@@ -114,6 +114,10 @@ jobs:
         working-directory: coil-http
         run: $COIL $COIL_FLAGS examples/ws_loopback.hy | grep -q ok
 
+      - name: WebSocket TLS echo loopback (Server::tls)
+        working-directory: coil-http
+        run: $COIL $COIL_FLAGS examples/ws_tls_loopback.hy | grep -q ok
+
       - name: Cross-process EAGAIN HTTP/1 GET
         working-directory: coil-http
         run: |

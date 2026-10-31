@@ -353,9 +353,10 @@ fn serve_accepted(Server srv, Stream conn, HttpHandler handler) -> int {
 ///
 /// A slow client or TLS handshake does not hold up the others. A connection is
 /// kept open until the client closes it or sends `Connection: close`; per
-/// connection errors only end that connection. Returns `Io(InvalidInput)` when
-/// `srv` is not bound; otherwise returns once `accept` fails and the open
-/// connections are done, after closing the listener.
+/// connection errors only end that connection. Every connection's task calls the
+/// same `handler` object. Returns `Io(InvalidInput)` when `srv` is not bound;
+/// otherwise returns once `accept` fails and the open connections are done,
+/// after closing the listener.
 fn serve(Server srv, HttpHandler handler) -> Result<(), HttpError> {
     let listener = match srv.listener {
         Option::None => http_not_bound()?,
@@ -367,7 +368,7 @@ fn serve(Server srv, HttpHandler handler) -> Result<(), HttpError> {
             while keep == 1 {
                 match accept_wait(listener) {
                     Result::Ok(conn) => {
-                        s.spawn(fn () use (srv, conn, handler) => serve_accepted(srv, conn, handler));
+                        s.spawn(fn () use (srv, conn, mut handler) => serve_accepted(srv, conn, handler));
                     },
                     Result::Err(_) => {
                         keep = 0;

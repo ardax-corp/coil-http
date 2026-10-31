@@ -6,6 +6,7 @@ use string::{to_bytes};
 use io::net::tcp::connect as tcp_connect;
 use io::sync::{accept_wait, write_all};
 use tls::client::{enable as tls_enable, ClientOpts};
+use tls::server::{enable as tls_server_enable, ServerOpts};
 use http::sha1::{sha1};
 use http::url::{
     HttpError,
@@ -875,8 +876,10 @@ fn ws_upgrade(HttpConn c, IncomingRequest req) -> Result<WsConn, HttpError> {
 /// Accepts one connection on `srv`, reads its HTTP/1.1 request and completes the
 /// WebSocket upgrade.
 ///
-/// Cleartext only: `Server::tls` is not applied here. Returns `Io(InvalidInput)`
-/// when `srv` is not bound and `Protocol` when the request is not an upgrade.
+/// With `Server::tls` set, the accepted connection does a TLS handshake first
+/// (`wss://`). Returns `Io(InvalidInput)` when `srv` is not bound, `Io` when
+/// accepting fails, `Tls` when the handshake fails and `Protocol` when the request
+/// is not an upgrade.
 ///
 /// # Examples
 ///
@@ -902,7 +905,14 @@ fn ws_serve_once(Server srv) -> Result<WsConn, HttpError> {
         Result::Ok(s) => s,
         Result::Err(e) => http_fail_stream(e)?,
     };
-    let c = HttpConn::wrap(conn);
+    let stream = conn;
+    if srv.use_tls == 1 {
+        stream = match tls_server_enable(conn, new ServerOpts(srv.tls_cert, srv.tls_key, 0, "", "")) {
+            Result::Ok(s) => s,
+            Result::Err(e) => http_fail_tls(e)?,
+        };
+    }
+    let c = HttpConn::wrap(stream);
     let raw = match read_http_message(c) {
         Result::Ok(b) => b,
         Result::Err(e) => {

@@ -8,8 +8,10 @@ use http::url::{
     parse_url,
 };
 use http::request::{
+    Request,
     build_request_head,
     build_request_head_extras,
+    build_request_head_keepalive,
     concat_bytes,
     extras_sanitize,
     format_extra_headers_str,
@@ -233,4 +235,85 @@ test("extras sanitize rejects injected header line") {
         Result::Ok(_) => false,
         Result::Err(e) => e == HttpError::InvalidHeader,
     }, "extras sanitize InvalidHeader");
+}
+
+test("build_request_head writes headers after the Host line") {
+    let u = match parse_url("http://example.com/") {
+        Result::Ok(v) => v,
+        Result::Err(_) => panic "parse failed",
+    };
+    let hs = empty_headers();
+    hs.add("X-Trace", "abc");
+    hs.add("Host", "evil.example");
+    hs.add("Accept", "text/plain");
+    let msg = match build_request_head("GET", u, hs, 0) {
+        Result::Ok(m) => m,
+        Result::Err(_) => panic "build",
+    };
+    let want = to_bytes(
+        "GET / HTTP/1.1\r\nHost: example.com\r\nX-Trace: abc\r\nAccept: text/plain\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+    );
+    assert!(msg == want, "headers written in order, reserved dropped");
+}
+
+test("build_request_head_keepalive writes headers after the Host line") {
+    let u = match parse_url("http://example.com/") {
+        Result::Ok(v) => v,
+        Result::Err(_) => panic "parse failed",
+    };
+    let hs = empty_headers();
+    hs.add("X-Trace", "abc");
+    let msg = match build_request_head_keepalive("POST", u, hs, 2) {
+        Result::Ok(m) => m,
+        Result::Err(_) => panic "build",
+    };
+    let want = to_bytes(
+        "POST / HTTP/1.1\r\nHost: example.com\r\nX-Trace: abc\r\nContent-Length: 2\r\nConnection: keep-alive\r\n\r\n",
+    );
+    assert!(msg == want, "keep-alive head carries headers");
+}
+
+test("build_request_head rejects a header with CR / LF") {
+    let u = match parse_url("http://example.com/") {
+        Result::Ok(v) => v,
+        Result::Err(_) => panic "parse failed",
+    };
+    let hs = empty_headers();
+    hs.add("X-Trace", "a\r\nHost: evil");
+    let r = build_request_head("GET", u, hs, 0);
+    assert!(
+        match r {
+            Result::Ok(_) => false,
+            Result::Err(e) => e == HttpError::InvalidHeader,
+        },
+        "InvalidHeader",
+    );
+}
+
+test("reserved header names are matched in any case") {
+    let hs = empty_headers();
+    hs.add("hOST", "evil");
+    hs.add("content-Length", "999");
+    hs.add("CoNNeCTioN", "keep-alive");
+    hs.add("X-Ok", "1");
+    let extras = format_extra_headers_str(hs.names, hs.values);
+    assert!(extras == "X-Ok: 1\r\n", "only the custom header is kept");
+}
+
+test("Request::header drops mixed-case reserved names on the wire") {
+    let u = match parse_url("http://example.com/") {
+        Result::Ok(v) => v,
+        Result::Err(_) => panic "parse failed",
+    };
+    let req = Request::new();
+    req.header("content-Length", "999");
+    req.header("X-Ok", "1");
+    let msg = match build_request_head("GET", u, req.headers_val(), 0) {
+        Result::Ok(m) => m,
+        Result::Err(_) => panic "build",
+    };
+    let want = to_bytes(
+        "GET / HTTP/1.1\r\nHost: example.com\r\nX-Ok: 1\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+    );
+    assert!(msg == want, "caller content-Length dropped");
 }
