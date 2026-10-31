@@ -88,7 +88,44 @@ fn h2_append_bytes(Vec<byte> out, Vec<byte> extra) {
     }
 }
 
-/// One HTTP/2 connection (client or server) over a byte buffer.
+/// One HTTP/2 connection (client or server side) driven through byte buffers,
+/// with no socket of its own.
+///
+/// Hand it the bytes read from the peer with `feed`; it decodes frames, answers
+/// SETTINGS and PING, tracks streams, HPACK tables and flow-control windows, and
+/// queues what must be sent. `drain` returns the queued bytes for the caller to
+/// write. The socket loops in `http::server` and `Client::h2_get` are built on it.
+///
+/// The `pub` fields are the session's internal state, exposed for tests; read
+/// streams through the `stream_*` methods instead.
+///
+/// # Examples
+///
+/// A server session reading a prior-knowledge GET:
+///
+/// ```
+/// # use tests::assert;
+/// use http::h2::h2_prior_knowledge_get;
+/// use http::h2_session::H2Session;
+/// use http::url::parse_url;
+///
+/// let u = match parse_url("http://example.com/hello") {
+///     Result::Ok(u) => u,
+///     Result::Err(e) => panic show(e),
+/// };
+/// let sess = H2Session::new();
+/// match sess.feed(h2_prior_knowledge_get(u)) {
+///     Result::Ok(_) => 0,
+///     Result::Err(e) => panic show(e),
+/// };
+/// assert!(sess.stream_count() == 1);
+/// let h = match sess.stream_headers(1) {
+///     Result::Ok(h) => h,
+///     Result::Err(e) => panic show(e),
+/// };
+/// assert!(h.value_at(1) == "/hello");
+/// assert!(sess.drain().len() > 0);
+/// ```
 class H2Session {
     pub preface_done: int,
     pub settings_done: int,
@@ -152,6 +189,7 @@ class H2Session {
 }
 
 impl H2Session {
+    /// A session for `role` (1 client, 0 server); `preface_done` 1 skips waiting for the client preface.
     pub static fn open(int role, int preface_done) -> H2Session {
         let buf: Vec<byte> = Vec::new();
         let outgoing: Vec<byte> = Vec::new();
@@ -252,16 +290,17 @@ impl H2Session {
         );
     }
 
-    /// Server role: expect the client connection preface.
+    /// A server session, expecting the client connection preface first.
     pub static fn new() -> H2Session {
         return H2Session::open(0, 0);
     }
 
-    /// Client role: the peer does not send a connection preface.
+    /// A client session: the peer sends no connection preface.
     pub static fn client() -> H2Session {
         return H2Session::open(1, 1);
     }
 
+    /// The internal index of stream `sid`, or 999999 when the session has no such stream.
     pub fn find_id(int sid) -> int {
         let i = 0;
         let n = self.ids.len();
@@ -274,10 +313,12 @@ impl H2Session {
         return 999999;
     }
 
+    /// Queues frame `f` for `drain`.
     pub fn queue_frame(H2Frame f) {
         self.queue_bytes(encode_frame(f));
     }
 
+    /// Queues raw bytes for `drain`.
     pub fn queue_bytes(Vec<byte> wire) {
         let i = 0;
         while i < wire.len() {
@@ -286,6 +327,7 @@ impl H2Session {
         }
     }
 
+    /// Queues GOAWAY with `code` (once) and returns `Protocol`: a connection error.
     pub fn fail_conn(int code) -> Result<(), HttpError> {
         if self.goaway_sent == 0 {
             self.goaway_sent = 1;
@@ -297,6 +339,7 @@ impl H2Session {
         return ();
     }
 
+    /// Consumes the client connection preface from the input buffer once it is complete; `Protocol` when it does not match.
     pub fn try_preface() -> Result<(), HttpError> {
         let want = connection_preface();
         let have = self.buf.len();
@@ -411,13 +454,14 @@ impl H2Session {
         return ();
     }
 
-    /// Queue a SETTINGS frame and apply it to the local side.
+    /// Applies the local settings `s` and queues them as a SETTINGS frame.
     pub fn queue_local_settings(H2Settings s) -> Result<(), HttpError> {
         self.apply_settings_list(s, 0)?;
         self.queue_frame(settings_frame(s));
         return ();
     }
 
+    /// Handles a SETTINGS frame: applies the peer's settings and queues the ACK.
     pub fn on_settings(H2Frame f) -> Result<(), HttpError> {
         if f.stream_id != 0 {
             return self.fail_conn(h2_err_protocol())?;
@@ -436,6 +480,7 @@ impl H2Session {
         return ();
     }
 
+    /// Fails the connection unless `sid` is a valid client stream id (odd, nonzero).
     pub fn require_client_sid(int sid) -> Result<(), HttpError> {
         if sid == 0 {
             return self.fail_conn(h2_err_protocol())?;
@@ -488,7 +533,7 @@ impl H2Session {
         }
     }
 
-    /// Drop the concurrency slot after RST, or after both directions have ended.
+    // Drop the concurrency slot after RST, or after both directions have ended.
     fn note_closed(int idx) {
         if self.reset[idx] == 1 {
             self.release_conc(idx);
@@ -563,6 +608,7 @@ impl H2Session {
         self.tvalues = vv;
     }
 
+    /// Opens stream `sid` with decoded header fields `h`; fails the connection if it already exists.
     pub fn store_headers(int sid, int end_stream, Headers h) -> Result<(), HttpError> {
         let idx = self.find_id(sid);
         if idx != 999999 {
@@ -579,6 +625,7 @@ impl H2Session {
         return ();
     }
 
+    /// Applies a decoded header block to stream `sid`: opens it, or records trailers on an open one.
     pub fn accept_headers(int sid, int end_stream, Headers h) -> Result<(), HttpError> {
         if self.stream_is_reset(sid) == 1 {
             return ();
@@ -629,12 +676,14 @@ impl H2Session {
         return ();
     }
 
+    /// HPACK-decodes a complete header block for stream `sid` and applies it.
     pub fn finish_headers(int sid, int end_stream, Vec<byte> block) -> Result<(), HttpError> {
         self.require_client_sid(sid)?;
         let h = decode_header_block_with(block, self.hpack)?;
         return self.accept_headers(sid, end_stream, h)?;
     }
 
+    /// HPACK-decodes a complete PUSH_PROMISE block and records the promised request.
     pub fn finish_push(int associated, int promised, Vec<byte> block) -> Result<(), HttpError> {
         self.require_client_sid(associated)?;
         if self.find_id(associated) == 999999 {
@@ -659,6 +708,7 @@ impl H2Session {
         return ();
     }
 
+    /// Forgets a pending HEADERS / PUSH_PROMISE + CONTINUATION sequence.
     pub fn clear_cont() {
         self.cont_on = 0;
         self.cont_sid = 0;
@@ -677,6 +727,7 @@ impl H2Session {
         return self.reset[idx];
     }
 
+    /// Handles a HEADERS frame, starting a CONTINUATION sequence when END_HEADERS is not set.
     pub fn on_headers(H2Frame f) -> Result<(), HttpError> {
         self.require_client_sid(f.stream_id)?;
         if self.stream_is_reset(f.stream_id) == 1 {
@@ -695,6 +746,7 @@ impl H2Session {
         return ();
     }
 
+    /// Handles a PUSH_PROMISE frame, starting a CONTINUATION sequence when END_HEADERS is not set.
     pub fn on_push_promise(H2Frame f) -> Result<(), HttpError> {
         if self.local_enable_push == 0 {
             return self.fail_conn(h2_err_protocol())?;
@@ -716,6 +768,7 @@ impl H2Session {
         return ();
     }
 
+    /// Handles a CONTINUATION frame; `Protocol` when none was expected or it is on another stream.
     pub fn on_continuation(H2Frame f) -> Result<(), HttpError> {
         if self.cont_on == 0 {
             return self.fail_conn(h2_err_protocol())?;
@@ -743,6 +796,7 @@ impl H2Session {
         return self.finish_headers(sid, es, block)?;
     }
 
+    /// Queues a PUSH_PROMISE on stream `associated` promising `promised` for `method path` at `authority`.
     pub fn queue_push(int associated, int promised, string method, string path, string authority) {
         let h = Headers::new();
         h.add(":method", method);
@@ -751,6 +805,7 @@ impl H2Session {
         self.queue_frame(push_promise_frame(associated, promised, h));
     }
 
+    /// Appends DATA `payload` to the stream at internal index `idx`.
     pub fn append_body(int idx, Vec<byte> payload) {
         let newb: Vec<byte> = Vec::new();
         let starts: Vec<int> = Vec::new();
@@ -803,6 +858,7 @@ impl H2Session {
         return ();
     }
 
+    /// Handles a DATA frame: checks the stream and flow-control windows and stores the payload.
     pub fn on_data(H2Frame f) -> Result<(), HttpError> {
         self.require_client_sid(f.stream_id)?;
         let idx = self.find_id(f.stream_id);
@@ -913,6 +969,7 @@ impl H2Session {
         return ();
     }
 
+    /// Handles one decoded frame of any type.
     pub fn on_frame(H2Frame f) -> Result<(), HttpError> {
         if f.payload.len() > self.local_max_frame {
             return self.fail_conn(h2_err_frame_size())?;
@@ -965,6 +1022,10 @@ impl H2Session {
         return ();
     }
 
+    /// Adds bytes received from the peer and handles every complete frame in them.
+    ///
+    /// A partial frame is kept for the next call. Returns `Protocol` on a connection
+    /// error, after queuing GOAWAY.
     pub fn feed(Vec<byte> chunk) -> Result<(), HttpError> {
         if self.conn_err == 1 {
             http_err_protocol()?;
@@ -995,6 +1056,7 @@ impl H2Session {
         return ();
     }
 
+    /// Returns and clears the bytes queued for the peer.
     pub fn drain() -> Vec<byte> {
         let out = self.outgoing;
         let empty: Vec<byte> = Vec::new();
@@ -1175,7 +1237,8 @@ impl H2Session {
         self.tb_on[idx] = 1;
     }
 
-    /// Client: open an odd stream and queue HEADERS plus a request body.
+    /// Client: opens stream `sid` (odd) and queues HEADERS with `h` plus `body` as
+    /// DATA, within the peer's flow-control window.
     pub fn write_request(int sid, Headers h, Vec<byte> body) -> Result<(), HttpError> {
         if sid == 0 {
             return self.fail_conn(h2_err_protocol())?;
@@ -1213,7 +1276,8 @@ impl H2Session {
         return ();
     }
 
-    /// Server: queue the handler response on an existing stream.
+    /// Server: queues the response on stream `sid`: `:status` and `fields`, the body
+    /// as DATA within the flow-control window, then `trailers` if any.
     pub fn queue_response(int sid, int status, Headers fields, Vec<byte> body, Headers trailers) -> Result<(), HttpError> {
         let idx = self.find_id(sid);
         if idx == 999999 {
@@ -1252,11 +1316,12 @@ impl H2Session {
         return ();
     }
 
+    /// The number of streams the session tracks.
     pub fn stream_count() -> int {
         return self.ids.len();
     }
 
-    /// Drop finished streams so a long sequential session does not scan them.
+    /// Drops every stream once all of them are finished, so a long sequential session stays small.
     pub fn forget_ended() {
         let i = 0;
         let live = 0;
@@ -1304,6 +1369,7 @@ impl H2Session {
         self.remote_streams = 0;
     }
 
+    /// The header fields received on stream `sid`; `Protocol` when there is no such stream.
     pub fn stream_headers(int sid) -> Result<Headers, HttpError> {
         let idx = self.find_id(sid);
         if idx == 999999 {
@@ -1312,6 +1378,7 @@ impl H2Session {
         return self.headers_from_flat(idx, self.hnum, self.names, self.values);
     }
 
+    /// The trailing fields received on stream `sid`.
     pub fn stream_trailers(int sid) -> Result<Headers, HttpError> {
         let idx = self.find_id(sid);
         if idx == 999999 {
@@ -1320,6 +1387,7 @@ impl H2Session {
         return self.headers_from_flat(idx, self.tnum, self.tnames, self.tvalues);
     }
 
+    /// The DATA received on stream `sid` so far.
     pub fn stream_body(int sid) -> Result<Vec<byte>, HttpError> {
         let idx = self.find_id(sid);
         if idx == 999999 {
@@ -1329,6 +1397,7 @@ impl H2Session {
         return bytes_slice(self.blob, off, off + self.blen[idx]);
     }
 
+    /// 1 when the peer ended stream `sid` (END_STREAM), otherwise 0.
     pub fn stream_ended(int sid) -> Result<int, HttpError> {
         let idx = self.find_id(sid);
         if idx == 999999 {
@@ -1337,6 +1406,7 @@ impl H2Session {
         return self.ended[idx];
     }
 
+    /// 1 when stream `sid` was reset with RST_STREAM, otherwise 0.
     pub fn stream_reset(int sid) -> Result<int, HttpError> {
         let idx = self.find_id(sid);
         if idx == 999999 {
@@ -1345,6 +1415,7 @@ impl H2Session {
         return self.reset[idx];
     }
 
+    /// The id of the `i`th tracked stream.
     pub fn stream_id_at(int i) -> Result<int, HttpError> {
         if i < 0 {
             http_err_protocol()?;
@@ -1355,18 +1426,22 @@ impl H2Session {
         return self.ids[i];
     }
 
+    /// 1 once the peer sent GOAWAY.
     pub fn goaway_received() -> int {
         return self.goaway_recv;
     }
 
+    /// The last stream id from the peer's GOAWAY.
     pub fn goaway_last_stream() -> int {
         return self.goaway_last;
     }
 
+    /// The number of PUSH_PROMISEs received.
     pub fn push_count() -> int {
         return self.push_ids.len();
     }
 
+    /// The promised stream id of the `i`th PUSH_PROMISE.
     pub fn push_promised_id(int i) -> Result<int, HttpError> {
         if i < 0 {
             http_err_protocol()?;
@@ -1377,6 +1452,7 @@ impl H2Session {
         return self.push_ids[i];
     }
 
+    /// The request header fields of the push promising `promised_id`.
     pub fn push_headers(int promised_id) -> Result<Headers, HttpError> {
         let idx = 999999;
         let i = 0;
@@ -1407,13 +1483,16 @@ impl H2Session {
     }
 }
 
-/// Two responses from one multiplexed exchange (streams 1 and 3).
+/// The two responses of `h2_connect_two` (streams 1 and 3).
 class H2Pair {
+    /// Response on stream 1.
     pub first: Response,
+    /// Response on stream 3.
     pub second: Response,
 }
 
 impl H2Pair {
+    /// A pair from its parts.
     pub static fn new(Response first, Response second) -> H2Pair {
         return new H2Pair(first, second);
     }
@@ -1529,8 +1608,8 @@ fn h2_client_arm(H2Session sess) -> Result<(), HttpError> {
     return sess.queue_local_settings(st)?;
 }
 
-/// One request/response on an open HTTP/2 connection. Does not close `s` on success.
-/// `preface` 1 writes the client connection preface with the first request bytes.
+// One request/response on an open HTTP/2 connection. Does not close `s` on success.
+// `preface` 1 writes the client connection preface with the first request bytes.
 fn h2_roundtrip(Stream s, H2Session sess, int sid, Url u, string method, Headers extra, Vec<byte> body, int preface) -> Result<Response, HttpError> {
     sess.write_request(sid, h2_request_headers(u, method, extra), body)?;
     let payload = sess.drain();
@@ -1645,27 +1724,46 @@ fn h2_request_on_url(string url, string method, Headers extra, Vec<byte> body, b
     return h2_exchange_on(tcp, u, method, extra, body)?;
 }
 
-/// HTTP/2 request. Cleartext uses the connection preface. HTTPS uses ALPN and
-/// falls back to HTTP/1.1 unless the selected protocol is `h2`.
+/// Sends one HTTP/2 request on a new connection and closes it.
+///
+/// Cleartext URLs use prior knowledge; `https://` offers ALPN `h2,http/1.1` and
+/// sends the request as HTTP/1.1 when the server does not pick `h2`. Use
+/// `Client::h2_send` to reuse the connection.
 fn h2_request(string url, string method, Headers extra, Vec<byte> body) -> Result<Response, HttpError> {
     return h2_request_on_url(url, method, extra, body, true, "")?;
 }
 
-/// GET: cleartext prior-knowledge, or HTTPS TLS ALPN `h2` with HTTP/1.1 fallback.
+/// `GET url` over HTTP/2 on a new connection, like `h2_request`.
+///
+/// # Examples
+///
+/// ```no_run
+/// use http::h2_session::h2_connect;
+///
+/// fn main() {
+///     let r = match h2_connect("http://127.0.0.1:8080/") {
+///         Result::Ok(r) => r,
+///         Result::Err(e) => panic show(e),
+///     };
+///     if r.status != 200 {
+///         panic "unexpected status";
+///     }
+/// }
+/// ```
 fn h2_connect(string url) -> Result<Response, HttpError> {
     let extra = Headers::new();
     let body: Vec<byte> = Vec::new();
     return h2_request(url, "GET", extra, body)?;
 }
 
-/// HTTPS GET after TLS enable with optional CA PEM (`""` uses default verify).
+/// `h2_connect` with TLS options: `verify` false skips certificate checks, a non-empty `ca_pem` trusts that CA.
 fn h2_connect_tls(string url, bool verify, string ca_pem) -> Result<Response, HttpError> {
     let extra = Headers::new();
     let body: Vec<byte> = Vec::new();
     return h2_request_on_url(url, "GET", extra, body, verify, ca_pem)?;
 }
 
-/// Two cleartext prior-knowledge GETs on one connection (streams 1 and 3).
+/// Two cleartext prior-knowledge GETs multiplexed on one new connection (streams 1 and 3).
 fn h2_connect_two(string url_a, string url_b) -> Result<H2Pair, HttpError> {
     let a = parse_url(url_a)?;
     let b = parse_url(url_b)?;
@@ -1679,7 +1777,7 @@ fn h2_connect_two(string url_a, string url_b) -> Result<H2Pair, HttpError> {
     return h2_exchange_two_on(tcp, a, b)?;
 }
 
-/// HTTP/2 GET on an already-connected stream (prior knowledge or TLS `h2`).
+/// `GET u` over HTTP/2 on an already connected stream (cleartext prior knowledge, or TLS after ALPN `h2`).
 fn h2_get_over_h2(Stream s, Url u) -> Result<Response, HttpError> {
     let extra = Headers::new();
     let body: Vec<byte> = Vec::new();
@@ -1690,7 +1788,7 @@ fn h2_origin_key(Url u) -> string {
     return u.scheme + "://" + u.host + ":" + int_to_dec(u.port);
 }
 
-/// One HTTP/2 connection held by `Client`. Not the HTTP/1.1 `ConnPool`.
+// One HTTP/2 connection held by `Client`. Not the HTTP/1.1 `ConnPool`.
 class H2ClientSlot {
     pub on: int,
     pub key: string,
@@ -1799,7 +1897,7 @@ fn h2_slot_dial(H2ClientSlot slot, Url u, string key, string method, Headers ext
     return h2_slot_run_first(slot, tcp, u, key, method, extra, body)?;
 }
 
-/// Request on this slot. Reuses the live connection for the same origin.
+// Request on this slot. Reuses the live connection for the same origin.
 fn h2_slot_exchange(H2ClientSlot slot, string url, string method, Headers extra, Vec<byte> body) -> Result<Response, HttpError> {
     let u = parse_url(url)?;
     let key = h2_origin_key(u);

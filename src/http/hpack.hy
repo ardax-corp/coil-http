@@ -10,54 +10,99 @@ use http::url::{
     http_err_protocol,
 };
 
-/// Integer decode cursor (RFC 7541 §5.1).
+/// A decoded HPACK integer (RFC 7541 §5.1) and the offset just past it.
 class HpackInt {
+    /// The decoded integer.
     pub value: int,
+    /// Offset of the first byte after the integer.
     pub next: int,
 }
 
 impl HpackInt {
+    /// A cursor from its parts.
     pub static fn new(int value, int next) -> HpackInt {
         return new HpackInt(value, next);
     }
 }
 
-/// String literal decode cursor (RFC 7541 §5.2).
+/// A decoded HPACK string literal (RFC 7541 §5.2) and the offset just past it.
 class HpackStr {
+    /// The decoded string.
     pub value: string,
+    /// Offset of the first byte after the string.
     pub next: int,
 }
 
 impl HpackStr {
+    /// A cursor from its parts.
     pub static fn new(string value, int next) -> HpackStr {
         return new HpackStr(value, next);
     }
 }
 
-/// Literal name/value plus resume offset.
+/// A decoded literal header field (name and value) and the offset just past it.
 class HpackNV {
+    /// Field name.
     pub name: string,
+    /// Field value.
     pub value: string,
+    /// Offset of the first byte after the field.
     pub next: int,
 }
 
 impl HpackNV {
+    /// A cursor from its parts.
     pub static fn new(string name, string value, int next) -> HpackNV {
         return new HpackNV(name, value, next);
     }
 }
 
-/// Decoder dynamic table (RFC 7541 §2.3). `cap` is SETTINGS_HEADER_TABLE_SIZE.
+/// An HPACK dynamic table (RFC 7541 §2.3), for one direction of one connection.
+///
+/// The encoder and the decoder of a connection each keep one; reusing it across
+/// header blocks lets later blocks refer to fields added by earlier ones. Entries
+/// are kept oldest first and evicted oldest first.
+///
+/// # Examples
+///
+/// ```
+/// # use tests::assert;
+/// use http::hpack::{HpackTable, decode_header_block_with, encode_header_block_with};
+/// use http::url::Headers;
+///
+/// let h = Headers::new();
+/// h.add(":method", "GET");
+/// h.add("x-trace", "abc");
+/// let enc = HpackTable::new(4096);
+/// let dec = HpackTable::new(4096);
+/// let first = encode_header_block_with(h, enc);
+/// let second = encode_header_block_with(h, enc);
+/// assert!(second.len() < first.len());
+/// let a = match decode_header_block_with(first, dec) {
+///     Result::Ok(v) => v,
+///     Result::Err(e) => panic show(e),
+/// };
+/// let b = match decode_header_block_with(second, dec) {
+///     Result::Ok(v) => v,
+///     Result::Err(e) => panic show(e),
+/// };
+/// assert!(b.value_at(1) == "abc");
+/// ```
 class HpackTable {
+    /// Entry names, oldest first.
     pub names: Vec<string>,
+    /// Entry values; `values[i]` belongs to `names[i]`.
     pub values: Vec<string>,
+    /// Upper bound for the table size, from SETTINGS_HEADER_TABLE_SIZE.
     pub cap: int,
+    /// Current maximum size in octets (at most `cap`; lowered by size updates).
     pub max_size: int,
+    /// Current size in octets (name + value + 32 per entry).
     pub size: int,
 }
 
 impl HpackTable {
-    /// Empty table; `cap` is the SETTINGS limit (RFC default 4096).
+    /// An empty table with limit `cap` octets (the RFC default is 4096).
     pub static fn new(int cap) -> HpackTable {
         let names: Vec<string> = Vec::new();
         let values: Vec<string> = Vec::new();
@@ -153,7 +198,7 @@ fn huff_push(Vec<int> codes, Vec<int> lens, int code, int nbits) {
     lens.push(nbits);
 }
 
-/// RFC 7541 Appendix B codes, LSB-aligned, plus bit lengths.
+// RFC 7541 Appendix B codes, LSB-aligned, plus bit lengths.
 fn huff_fill(Vec<int> codes, Vec<int> lens) {
     huff_push(codes, lens, 8184, 13);
     huff_push(codes, lens, 8388568, 23);
@@ -414,6 +459,7 @@ fn huff_fill(Vec<int> codes, Vec<int> lens) {
 
 }
 
+/// Decodes an RFC 7541 Appendix B Huffman string. Returns `Protocol` for an unknown code or padding that is longer than 7 bits or not all 1-bits.
 fn decode_hpack_huffman(Vec<byte> raw) -> Result<string, HttpError> {
     let codes: Vec<int> = Vec::new();
     let lens: Vec<int> = Vec::new();
@@ -464,7 +510,7 @@ fn decode_hpack_huffman(Vec<byte> raw) -> Result<string, HttpError> {
     return hpack_bytes_to_str(outb)?;
 }
 
-/// RFC 7541 Appendix B Huffman coding, padded with 1-bits to an octet boundary.
+/// Huffman-encodes `raw` with the RFC 7541 Appendix B code, padded with 1-bits to a whole octet.
 fn encode_hpack_huffman(Vec<byte> raw) -> Vec<byte> {
     let codes: Vec<int> = Vec::new();
     let lens: Vec<int> = Vec::new();
@@ -983,7 +1029,7 @@ fn encode_header_block_with(Headers h, HpackTable t) -> Vec<byte> {
     return out;
 }
 
-/// One-shot encode into a fresh 4096-octet table.
+/// HPACK-encodes `h` with a fresh 4096-octet table (one-shot; see `encode_header_block_with`).
 fn encode_header_block(Headers h) -> Vec<byte> {
     return encode_header_block_with(h, HpackTable::new(4096));
 }
@@ -1030,7 +1076,28 @@ fn decode_header_block_with(Vec<byte> raw, HpackTable t) -> Result<Headers, Http
     return h;
 }
 
-/// Decode a HEADERS payload into `Headers`. Uses a fresh 4096-octet dynamic table.
+/// Decodes an HPACK header block with a fresh 4096-octet table.
+///
+/// Returns `Protocol` for an index outside the tables, a truncated block or a
+/// bad Huffman string.
+///
+/// # Examples
+///
+/// ```
+/// # use tests::assert;
+/// use http::hpack::{decode_header_block, encode_header_block};
+/// use http::url::Headers;
+///
+/// let h = Headers::new();
+/// h.add(":status", "200");
+/// h.add("content-type", "text/plain");
+/// let back = match decode_header_block(encode_header_block(h)) {
+///     Result::Ok(v) => v,
+///     Result::Err(e) => panic show(e),
+/// };
+/// assert!(back.count() == 2);
+/// assert!(back.name_at(1) == "content-type");
+/// ```
 fn decode_header_block(Vec<byte> raw) -> Result<Headers, HttpError> {
     return decode_header_block_with(raw, HpackTable::new(4096))?;
 }
