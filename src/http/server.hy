@@ -23,24 +23,120 @@ use http::h2::{
 };
 use http::h2_session::{H2Session};
 
+/// Answers server requests: implement `handle` and pass the value to `serve` (or
+/// another serve function).
+///
+/// `handle` runs once per request, on HTTP/1.1 and HTTP/2 alike, and cannot fail:
+/// turn errors into a status code. `serve` runs each connection in its own task,
+/// so one handler value may be called from several tasks at once.
+///
+/// # Examples
+///
+/// ```
+/// # use tests::assert;
+/// use http::server::HttpHandler;
+/// use http::h1::{IncomingRequest, parse_request};
+/// use http::response::Response;
+/// use string::to_bytes;
+///
+/// class Hello {}
+///
+/// impl HttpHandler for Hello {
+///     fn handle(Hello self, IncomingRequest req) -> Response {
+///         let r = Response::ok();
+///         if req.path_val() != "/" {
+///             r.status(404);
+///             return r;
+///         }
+///         r.header("Content-Type", "text/plain");
+///         r.body(to_bytes("hello"));
+///         return r;
+///     }
+/// }
+///
+/// fn main() {
+///     let h = new Hello();
+///     let req = match parse_request(to_bytes("GET /missing HTTP/1.1\r\nHost: x\r\n\r\n")) {
+///         Result::Ok(r) => r,
+///         Result::Err(e) => panic show(e),
+///     };
+///     assert!(h.handle(req).status == 404);
+/// }
+/// ```
 trait HttpHandler<H> {
+    /// Builds the response to `req`.
     fn handle(H self, IncomingRequest req) -> Response;
 }
 
+/// A listening HTTP server socket and its TLS settings.
+///
+/// `bind` opens the listener; `tls` turns on TLS for accepted connections. Then
+/// hand the server and an `HttpHandler` to one of the serve functions:
+///
+/// | Function | Accepts | Protocol |
+/// |---|---|---|
+/// | `serve` | until the listener fails, a task per connection | HTTP/1.1, keep-alive |
+/// | `serve_once` | one connection, one request | HTTP/1.1 |
+/// | `serve_one_client` | one connection, until it closes | HTTP/1.1, keep-alive |
+/// | `h2_serve_all` | until the listener fails, one connection at a time | HTTP/2 (prior knowledge, or TLS ALPN `h2`), else HTTP/1.1 |
+/// | `h2_serve` | as `h2_serve_all`, TLS only | HTTP/2 or HTTP/1.1 by ALPN |
+/// | `h2_serve_once` | one connection | as `h2_serve_all` |
+///
+/// `http::ws::ws_serve_once` accepts a WebSocket upgrade on the same listener.
+/// The program needs `--allow-net`, and with TLS also `--allow-attach` and the
+/// `libtls` grants. Dropping the server closes the listener only when the
+/// garbage collector runs.
+///
+/// # Examples
+///
+/// ```no_run
+/// use http::server::{HttpHandler, Server, serve};
+/// use http::h1::IncomingRequest;
+/// use http::response::Response;
+/// use http::url::HttpError;
+/// use string::to_bytes;
+///
+/// class Hello {}
+///
+/// impl HttpHandler for Hello {
+///     fn handle(Hello self, IncomingRequest req) -> Response {
+///         let r = Response::ok();
+///         r.header("Content-Type", "text/plain");
+///         r.body(to_bytes("hello from " + req.path_val()));
+///         return r;
+///     }
+/// }
+///
+/// fn main() -> Result<(), HttpError> {
+///     let srv = Server::new();
+///     srv.bind("127.0.0.1", 8080)?;
+///     serve(srv, new Hello())?;
+///     return ();
+/// }
+/// ```
 class Server {
+    /// Host the listener was bound to (`127.0.0.1` before `bind`).
     pub host: string,
+    /// Port passed to `bind`; `0` means the system picked one (see `bound_port`).
     pub port: int,
+    /// The listening socket, `None` until `bind` succeeds.
     pub listener: Option<Stream>,
+    /// PEM certificate chain set by `tls`.
     pub tls_cert: string,
+    /// PEM private key set by `tls`.
     pub tls_key: string,
+    /// 1 when `tls` was called and accepted connections do a TLS handshake.
     pub use_tls: int,
 }
 
 impl Server {
+    /// An unbound server without TLS.
     pub static fn new() -> Server {
         return new Server("127.0.0.1", 0, Option::None, "", "", 0);
     }
 
+    /// Starts listening on `host:port`. Port `0` picks a free port; read it with
+    /// `bound_port`. Returns `Io` when the address cannot be bound.
     pub fn bind(string host, int port) -> Result<(), HttpError> {
         let listener = match listen(host, port) {
             Result::Ok(s) => s,
@@ -52,12 +148,33 @@ impl Server {
         return ();
     }
 
+    /// Serves TLS with this PEM certificate chain and private key.
+    ///
+    /// The handshake runs per accepted connection, so a bad certificate or key shows
+    /// up when a client connects, not here.
     pub fn tls(string cert_pem, string key_pem) {
         self.tls_cert = cert_pem;
         self.tls_key = key_pem;
         self.use_tls = 1;
     }
 
+    /// The port the listener is bound to; useful after `bind(host, 0)`.
+    ///
+    /// Returns `Io(InvalidInput)` before `bind`.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use http::server::Server;
+    /// use http::url::HttpError;
+    ///
+    /// fn main() -> Result<(), HttpError> {
+    ///     let srv = Server::new();
+    ///     srv.bind("127.0.0.1", 0)?;
+    ///     let port = srv.bound_port()?;
+    ///     return ();
+    /// }
+    /// ```
     pub fn bound_port() -> Result<int, HttpError> {
         if match self.listener {
             Option::None => true,
@@ -111,9 +228,11 @@ fn serve_conn_once(Server srv, Stream s, HttpHandler handler) -> Result<(), Http
     return ();
 }
 
-/// Accept one TCP connection, optionally wrap TLS, handle one request.
-/// `HttpHandler` is existential so accept/read/write run in a non-generic frame
-/// (dict-passing `<H: HttpHandler>` does not park WouldBlock).
+/// Accepts one connection, answers one HTTP/1.1 request with `handler`, and
+/// closes the connection.
+///
+/// Returns `Io(InvalidInput)` when `srv` is not bound, `Io` when accepting
+/// fails, `Tls` when the handshake fails and `Protocol` for a malformed request.
 fn serve_once(Server srv, HttpHandler handler) -> Result<(), HttpError> {
     let listener = match srv.listener {
         Option::None => http_not_bound()?,
@@ -133,6 +252,8 @@ fn serve_once(Server srv, HttpHandler handler) -> Result<(), HttpError> {
     return serve_conn_once(srv, stream, handler)?;
 }
 
+/// Serves HTTP/1.1 requests on an accepted stream until the client closes, sends
+/// `Connection: close`, or sends a malformed request, then closes the stream.
 fn serve_conn_loop(Stream s, HttpHandler handler) -> Result<(), HttpError> {
     let c = HttpConn::wrap(s);
     let keep_going = 1;
@@ -181,7 +302,11 @@ fn serve_conn_loop(Stream s, HttpHandler handler) -> Result<(), HttpError> {
     return ();
 }
 
-/// Accept one TCP connection and serve HTTP/1.1 until the client closes or sends `Connection: close`.
+/// Accepts one connection and serves HTTP/1.1 on it until the client closes or
+/// sends `Connection: close`.
+///
+/// Returns `Io(InvalidInput)` when `srv` is not bound and `Io` / `Tls` when
+/// accepting or the handshake fails.
 fn serve_one_client(Server srv, HttpHandler handler) -> Result<(), HttpError> {
     let listener = match srv.listener {
         Option::None => http_not_bound()?,
@@ -201,8 +326,8 @@ fn serve_one_client(Server srv, HttpHandler handler) -> Result<(), HttpError> {
     return serve_conn_loop(stream, handler)?;
 }
 
-/// One accepted connection, in its own task: TLS handshake (when enabled),
-/// then HTTP/1.1 until the client closes.
+// One accepted connection, in its own task: TLS handshake (when enabled),
+// then HTTP/1.1 until the client closes.
 fn serve_accepted(Server srv, Stream conn, HttpHandler handler) -> int {
     let stream = conn;
     if srv.use_tls == 1 {
@@ -224,9 +349,13 @@ fn serve_accepted(Server srv, Stream conn, HttpHandler handler) -> int {
     return 0;
 }
 
-/// Accept loop: each connection is served by its own task, so a slow client
-/// (or a TLS handshake) does not hold up the others. Returns when `accept`
-/// fails, after the open connections finished.
+/// Serves HTTP/1.1 until accepting fails, each connection in its own task.
+///
+/// A slow client or TLS handshake does not hold up the others. A connection is
+/// kept open until the client closes it or sends `Connection: close`; per
+/// connection errors only end that connection. Returns `Io(InvalidInput)` when
+/// `srv` is not bound; otherwise returns once `accept` fails and the open
+/// connections are done, after closing the listener.
 fn serve(Server srv, HttpHandler handler) -> Result<(), HttpError> {
     let listener = match srv.listener {
         Option::None => http_not_bound()?,
@@ -407,8 +536,10 @@ fn h2_arm_server(H2Session sess) -> Result<(), HttpError> {
     return sess.queue_local_settings(st)?;
 }
 
-/// Speak prior-knowledge HTTP/2 on an already-accepted stream.
-/// Each ended stream is dispatched to `handler`.
+/// Speaks prior-knowledge HTTP/2 on an already accepted stream, answering each
+/// finished stream with `handler`, until the client closes or the session ends
+/// after `GOAWAY`. Closes the stream when done; returns `Protocol` (after sending
+/// `GOAWAY`) when the client breaks HTTP/2.
 fn h2_serve_conn(Stream conn, HttpHandler handler) -> Result<(), HttpError> {
     let sess = H2Session::new();
     match h2_arm_server(sess) {
@@ -552,8 +683,11 @@ fn h2_accept_one(Server srv, Stream conn, HttpHandler handler, int once) -> Resu
     return h2_serve_conn(stream, handler)?;
 }
 
-/// Accept one TCP connection. HTTP/2 prior knowledge, or TLS ALPN `h2`.
-/// ALPN `http/1.1` (or empty) is served as HTTP/1.1 through the same handler.
+/// Accepts one connection and serves every request on it.
+///
+/// Cleartext connections speak prior-knowledge HTTP/2. With `Server::tls`, ALPN
+/// `h2` selects HTTP/2 and anything else (including no ALPN) one HTTP/1.1
+/// request through the same handler. Errors are as for `serve_once`.
 fn h2_serve_once(Server srv, HttpHandler handler) -> Result<(), HttpError> {
     let listener = match srv.listener {
         Option::None => http_not_bound()?,
@@ -566,8 +700,12 @@ fn h2_serve_once(Server srv, HttpHandler handler) -> Result<(), HttpError> {
     return h2_accept_one(srv, conn, handler, 1)?;
 }
 
-/// Accept connections until the listener fails. Cleartext is prior-knowledge HTTP/2.
-/// With `Server.tls`, ALPN `h2` is HTTP/2 and any other selection is HTTP/1.1.
+/// Accepts connections one at a time until accepting fails, serving each as
+/// `h2_serve_once` does (HTTP/1.1 fallback connections keep alive).
+///
+/// Errors on one connection only end that connection. Returns
+/// `Io(InvalidInput)` when `srv` is not bound; closes and clears the listener
+/// when it returns.
 fn h2_serve_all(Server srv, HttpHandler handler) -> Result<(), HttpError> {
     let listener = match srv.listener {
         Option::None => http_not_bound()?,
@@ -597,7 +735,9 @@ fn h2_serve_all(Server srv, HttpHandler handler) -> Result<(), HttpError> {
     return ();
 }
 
-/// TLS HTTP/2 accept loop. Requires `Server.tls`. ALPN other than `h2` is HTTP/1.1.
+/// The TLS form of `h2_serve_all`: ALPN `h2` is HTTP/2, anything else HTTP/1.1.
+///
+/// Returns `NotSupported` unless `Server::tls` was called.
 fn h2_serve(Server srv, HttpHandler handler) -> Result<(), HttpError> {
     if srv.use_tls == 0 {
         http_err_not_supported()?;

@@ -27,24 +27,83 @@ use http::response::{Response, bytes_slice_resp, header_get, parse_response};
 use http::conn::{HttpConn, close_conn, read_http_message};
 use http::server::{Server};
 
+/// One WebSocket frame (RFC 6455 §5.2), as `ws_recv` and `decode_ws_frame` return it.
+///
+/// `opcode` is one of the `ws_opcode_*` values. `payload` is already unmasked.
+///
+/// # Examples
+///
+/// ```
+/// # use tests::assert;
+/// use http::ws::{decode_ws_frame, encode_ws_frame, ws_opcode_text};
+/// use string::to_bytes;
+///
+/// let no_mask: Vec<byte> = Vec::new();
+/// let wire = encode_ws_frame(1, ws_opcode_text(), no_mask, to_bytes("hi"));
+/// let f = match decode_ws_frame(wire) {
+///     Result::Ok(f) => f,
+///     Result::Err(e) => panic show(e),
+/// };
+/// assert!(f.fin == 1);
+/// assert!(f.opcode == ws_opcode_text());
+/// assert!(f.masked == 0);
+/// assert!(f.payload.len() == 2);
+/// ```
 class WsFrame {
+    /// 1 when this is the final frame of a message.
     pub fin: int,
+    /// Frame type: text, binary, close, ping, pong or continuation (`ws_opcode_*`).
     pub opcode: int,
+    /// 1 when the frame arrived masked (client to server).
     pub masked: int,
+    /// Payload bytes, unmasked.
     pub payload: Vec<byte>,
 }
 
 impl WsFrame {
+    /// A frame from its parts.
     pub static fn new(int fin, int opcode, int masked, Vec<byte> payload) -> WsFrame {
         return new WsFrame(fin, opcode, masked, payload);
     }
 }
 
-/// Upgraded WebSocket on an HTTP/1.1 connection. `role` 1 = client (mask outbound).
+/// An open WebSocket over an upgraded HTTP/1.1 connection.
+///
+/// Made by `ws_connect` (client) or `ws_serve_once` / `ws_upgrade` (server).
+/// Send with `ws_send_text`, `ws_send_bin`, `ws_send_ping`, `ws_send_pong` and
+/// `ws_send_close`; read with `ws_recv`; end with `ws_close`. A client masks every
+/// frame it sends, as RFC 6455 requires; a server never does.
+///
+/// v1 limits: no fragmented messages, no extensions or subprotocols, payloads up
+/// to 1 MiB, and no WebSocket over HTTP/2.
+///
+/// # Examples
+///
+/// ```no_run
+/// use http::ws::{ws_close, ws_connect, ws_opcode_text, ws_recv, ws_send_close, ws_send_text};
+/// use http::url::HttpError;
+/// use string::from_bytes;
+///
+/// fn main() -> Result<(), HttpError> {
+///     let c = ws_connect("ws://127.0.0.1:8080/echo")?;
+///     ws_send_text(c, "hello")?;
+///     let f = ws_recv(c)?;
+///     if f.opcode == ws_opcode_text() {
+///         let text = from_bytes(f.payload);
+///     }
+///     ws_send_close(c)?;
+///     ws_close(c);
+///     return ();
+/// }
+/// ```
 class WsConn {
+    /// The upgraded HTTP/1.1 connection.
     pub conn: HttpConn,
+    /// 1 for a client (masks outbound frames), 0 for a server.
     pub role: int,
+    /// 1 once `ws_close` closed the connection.
     pub closed: int,
+    /// State of the masking-key generator.
     pub seed: int,
 }
 
@@ -62,26 +121,32 @@ fn ws_guid() -> string {
     return "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 }
 
+/// Opcode 0: continuation frame.
 fn ws_opcode_cont() -> int {
     return 0;
 }
 
+/// Opcode 1: text frame (UTF-8 payload).
 fn ws_opcode_text() -> int {
     return 1;
 }
 
+/// Opcode 2: binary frame.
 fn ws_opcode_bin() -> int {
     return 2;
 }
 
+/// Opcode 8: close frame.
 fn ws_opcode_close() -> int {
     return 8;
 }
 
+/// Opcode 9: ping frame.
 fn ws_opcode_ping() -> int {
     return 9;
 }
 
+/// Opcode 10: pong frame.
 fn ws_opcode_pong() -> int {
     return 10;
 }
@@ -139,7 +204,11 @@ fn ws_max_payload() -> int {
     return 1048576;
 }
 
-/// Encode one frame. `mask_key` length 4 masks the payload; empty means unmasked.
+/// Encodes one frame.
+///
+/// `fin` 1 marks the final frame. A 4-byte `mask_key` masks the payload (client
+/// to server); an empty one sends it unmasked. The length uses the 7-, 16- or
+/// 64-bit form as needed.
 fn encode_ws_frame(int fin, int opcode, Vec<byte> mask_key, Vec<byte> payload) -> Vec<byte> {
     let out: Vec<byte> = Vec::new();
     let b0 = opcode & 15;
@@ -184,7 +253,11 @@ fn ws_u8_at(Vec<byte> raw, int i) -> int {
     return raw[i] as int;
 }
 
-/// Parse the first complete WebSocket frame in `raw`. Extra bytes after it are ignored.
+/// Decodes the first complete frame in `raw`, unmasking the payload. Bytes after
+/// it are ignored.
+///
+/// Returns `Protocol` when `raw` is truncated, a reserved (RSV) bit is set, or the
+/// payload is over 1 MiB.
 fn decode_ws_frame(Vec<byte> raw) -> Result<WsFrame, HttpError> {
     if raw.len() < 2 {
         http_err_protocol()?;
@@ -251,7 +324,7 @@ fn decode_ws_frame(Vec<byte> raw) -> Result<WsFrame, HttpError> {
     return WsFrame::new(fin, opcode, masked, payload);
 }
 
-/// Byte count of the first complete frame, or 0 if truncated.
+/// The byte length of the first complete frame in `raw`, or 0 when `raw` is truncated.
 fn ws_frame_wire_len(Vec<byte> raw) -> int {
     if raw.len() < 2 {
         return 0;
@@ -346,12 +419,25 @@ fn ws_header_get_resp(Response r, string name) -> string {
     return v;
 }
 
-/// SHA-1(key + GUID) then Base64 — `Sec-WebSocket-Accept`.
+/// The `Sec-WebSocket-Accept` value for a client's `Sec-WebSocket-Key`:
+/// Base64(SHA-1(key + RFC 6455 GUID)).
+///
+/// # Examples
+///
+/// ```
+/// # use tests::assert;
+/// use http::ws::ws_accept_key;
+///
+/// assert!(ws_accept_key("dGhlIHNhbXBsZSBub25jZQ==") == "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=");
+/// ```
 fn ws_accept_key(string key) -> string {
     let raw = concat_bytes(to_bytes(key), to_bytes(ws_guid()));
     return encode(sha1(raw));
 }
 
+/// 1 when `req` is a WebSocket upgrade: `GET` with `Upgrade: websocket`,
+/// `Connection: upgrade`, `Sec-WebSocket-Version: 13` and a
+/// `Sec-WebSocket-Key`; otherwise 0.
 fn ws_is_upgrade_req(IncomingRequest req) -> int {
     if req.method_val() != "GET" {
         return 0;
@@ -423,7 +509,8 @@ fn ws_prng_bytes(int n, int seed) -> Vec<byte> {
     return out;
 }
 
-/// 16 random-ish bytes as standard Base64 (`Sec-WebSocket-Key`).
+/// A `Sec-WebSocket-Key`: 16 bytes from a simple generator seeded with `seed`,
+/// Base64-encoded. Not cryptographically random.
 fn ws_new_key(int seed) -> string {
     return encode(ws_prng_bytes(16, seed));
 }
@@ -452,28 +539,33 @@ fn ws_send_raw(WsConn c, int opcode, Vec<byte> payload) -> Result<(), HttpError>
     return ws_write(c, encode_ws_frame(1, opcode, key, payload))?;
 }
 
+/// Sends `s` as one text frame.
 fn ws_send_text(WsConn c, string s) -> Result<(), HttpError> {
     return ws_send_raw(c, ws_opcode_text(), to_bytes(s))?;
 }
 
+/// Sends `b` as one binary frame.
 fn ws_send_bin(WsConn c, Vec<byte> b) -> Result<(), HttpError> {
     return ws_send_raw(c, ws_opcode_bin(), b)?;
 }
 
+/// Sends a ping with payload `b` (RFC 6455 allows at most 125 bytes; not checked).
 fn ws_send_ping(WsConn c, Vec<byte> b) -> Result<(), HttpError> {
     return ws_send_raw(c, ws_opcode_ping(), b)?;
 }
 
+/// Sends a pong with payload `b`, normally the payload of the ping it answers.
 fn ws_send_pong(WsConn c, Vec<byte> b) -> Result<(), HttpError> {
     return ws_send_raw(c, ws_opcode_pong(), b)?;
 }
 
+/// Sends a close frame with no status code. Call `ws_close` afterwards.
 fn ws_send_close(WsConn c) -> Result<(), HttpError> {
     let empty: Vec<byte> = Vec::new();
     return ws_send_raw(c, ws_opcode_close(), empty)?;
 }
 
-/// Blocking read that parks on WouldBlock (same pattern as HTTP/2).
+// Blocking read that parks on WouldBlock (same pattern as HTTP/2).
 fn ws_read_n(HttpConn c, int n) -> Result<Vec<byte>, HttpError> {
     let out: Vec<byte> = Vec::new();
     let have = c.leftover.len();
@@ -604,7 +696,10 @@ fn ws_read_frame(WsConn c) -> Result<WsFrame, HttpError> {
     return decode_ws_frame(hdr)?;
 }
 
-/// Read one frame. Client rejects masked frames; server rejects unmasked data/control.
+/// Reads the next complete frame. Waits while no data is ready.
+///
+/// Returns `Protocol` for a fragment (`fin` 0), for a masked frame on a client
+/// or an unmasked one on a server, and for the cases `decode_ws_frame` rejects.
 fn ws_recv(WsConn c) -> Result<WsFrame, HttpError> {
     let f = ws_read_frame(c)?;
     if c.role == 1 {
@@ -622,6 +717,7 @@ fn ws_recv(WsConn c) -> Result<WsFrame, HttpError> {
     return f;
 }
 
+/// Closes the connection. Closing twice does nothing.
 fn ws_close(WsConn c) {
     if c.closed == 1 {
         return;
@@ -717,7 +813,12 @@ fn ws_handshake_client(HttpConn c, Url u, string key) -> Result<WsConn, HttpErro
     return ws_wrap(c, 1, 17 + u.port);
 }
 
-/// Client upgrade with TLS options (`verify` / optional CA PEM). `ws://` ignores TLS args.
+/// Opens a WebSocket to a `ws://` or `wss://` URL with TLS options.
+///
+/// For `wss://`, `verify` false skips certificate checks and a non-empty
+/// `ca_pem` trusts that PEM CA; both are ignored for `ws://`. Returns `BadUrl` for
+/// other schemes, `Io` / `Tls` when connecting fails and `Protocol` when the
+/// server does not accept the upgrade.
 fn ws_connect_tls(string url, bool verify, string ca_pem) -> Result<WsConn, HttpError> {
     let u = parse_url(url)?;
     if u.scheme != "ws" {
@@ -730,12 +831,15 @@ fn ws_connect_tls(string url, bool verify, string ca_pem) -> Result<WsConn, Http
     return ws_handshake_client(HttpConn::wrap(s), u, key)?;
 }
 
-/// Client upgrade. `ws://` is cleartext; `wss://` uses coil-tls (verified).
+/// Opens a WebSocket to a `ws://` or `wss://` URL (`wss://` with verified TLS).
+///
+/// Sends the HTTP/1.1 upgrade request and checks the server's
+/// `Sec-WebSocket-Accept`. Errors are as for `ws_connect_tls`.
 fn ws_connect(string url) -> Result<WsConn, HttpError> {
     return ws_connect_tls(url, true, "")?;
 }
 
-/// Client upgrade with a caller-supplied `Sec-WebSocket-Key` (tests / RFC vector).
+/// `ws_connect` with a caller-supplied `Sec-WebSocket-Key`, for tests against a known handshake.
 fn ws_connect_key(string url, string key) -> Result<WsConn, HttpError> {
     let u = parse_url(url)?;
     if u.scheme != "ws" {
@@ -747,6 +851,10 @@ fn ws_connect_key(string url, string key) -> Result<WsConn, HttpError> {
     return ws_handshake_client(HttpConn::wrap(s), u, key)?;
 }
 
+/// Completes the server side of an upgrade for a request already read from `c`.
+///
+/// Writes `101 Switching Protocols` and returns the server `WsConn`. Returns
+/// `Protocol` when `req` is not an upgrade (see `ws_is_upgrade_req`).
 fn ws_upgrade(HttpConn c, IncomingRequest req) -> Result<WsConn, HttpError> {
     if ws_is_upgrade_req(req) == 0 {
         http_err_protocol()?;
@@ -764,7 +872,27 @@ fn ws_upgrade(HttpConn c, IncomingRequest req) -> Result<WsConn, HttpError> {
     return ws_wrap(c, 0, 91);
 }
 
-/// Accept one TCP connection, read an HTTP/1.1 upgrade, return the WebSocket.
+/// Accepts one connection on `srv`, reads its HTTP/1.1 request and completes the
+/// WebSocket upgrade.
+///
+/// Cleartext only: `Server::tls` is not applied here. Returns `Io(InvalidInput)`
+/// when `srv` is not bound and `Protocol` when the request is not an upgrade.
+///
+/// # Examples
+///
+/// ```no_run
+/// use http::server::Server;
+/// use http::ws::{ws_echo_loop, ws_serve_once};
+/// use http::url::HttpError;
+///
+/// fn main() -> Result<(), HttpError> {
+///     let srv = Server::new();
+///     srv.bind("127.0.0.1", 8080)?;
+///     let c = ws_serve_once(srv)?;
+///     ws_echo_loop(c)?;
+///     return ();
+/// }
+/// ```
 fn ws_serve_once(Server srv) -> Result<WsConn, HttpError> {
     let listener = match srv.listener {
         Option::None => http_not_bound()?,
@@ -792,7 +920,8 @@ fn ws_serve_once(Server srv) -> Result<WsConn, HttpError> {
     return ws_upgrade(c, req)?;
 }
 
-/// Echo text/binary, answer ping, stop on close. Used by loopback examples.
+/// Echoes text and binary frames, answers pings with pongs, and returns after
+/// answering a close frame or on the first error, closing the connection.
 fn ws_echo_loop(WsConn c) -> Result<(), HttpError> {
     let keep = 1;
     while keep == 1 {

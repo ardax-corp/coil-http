@@ -1,6 +1,6 @@
 # coil-http documentation
 
-Userland HTTP/1.1 client and server for Coil programs.
+Userland HTTP/1.1 and HTTP/2 client and server, plus WebSocket, for Coil programs. Every public item also has `///` docs with examples in `src/`.
 
 | Doc | Topic |
 |-----|-------|

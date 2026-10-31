@@ -5,14 +5,24 @@ use http::url::{HttpError, http_err_protocol, http_err_io, http_fail_unit};
 use http::request::{concat_bytes};
 use http::response::{bytes_slice_resp, find_header_end, header_block_body_len, parse_chunk_size_line};
 
-/// Stream plus bytes pulled past the current message (keep-alive / pipelining).
+/// A socket plus the bytes read past the current HTTP/1.1 message.
+///
+/// `read_http_message` keeps any bytes after one message (a pipelined request or
+/// the next response) in `leftover` for the next read, so a keep-alive
+/// connection is read message by message. Used by `ConnPool`, the server loops
+/// and `WsConn`. Close it with `close_conn`.
 class HttpConn {
+    /// The underlying TCP or TLS stream.
     pub inner: Stream,
+    /// Bytes already read that belong to the next message.
     pub leftover: Vec<byte>,
+    /// 1 when the last message was framed and the connection can carry another.
     pub reusable: int,
+    /// 1 once `close_conn` closed the stream.
     pub closed: int,
 }
 
+/// Closes `c`'s stream. Closing twice does nothing; close errors are ignored.
 fn close_conn(HttpConn c) {
     if c.closed == 1 {
         return;
@@ -25,15 +35,18 @@ fn close_conn(HttpConn c) {
 }
 
 impl HttpConn {
+    /// Wraps an open stream with no buffered bytes.
     pub static fn wrap(Stream s) -> HttpConn {
         let leftover: Vec<byte> = Vec::new();
         return new HttpConn(s, leftover, 1, 0);
     }
 
+    /// The underlying stream, for writing.
     pub fn stream() -> Stream {
         return self.inner;
     }
 
+    /// 1 when the connection can carry another message, otherwise 0.
     pub fn can_reuse() -> int {
         return self.reusable;
     }
@@ -198,7 +211,12 @@ fn append_read(Vec<byte> acc, Vec<byte> chunk, int nread) {
     }
 }
 
-/// Read until CRLFCRLF, then exactly Content-Length body bytes. Extra bytes stay on `c`.
+/// Reads one complete HTTP/1.1 message (head and body) from `c`.
+///
+/// The body is framed by `Content-Length` or chunked encoding (returned still
+/// chunked); a message with neither ends at the head. Bytes after the message
+/// stay on `c`. Waits while the socket has no data. Returns `Protocol` when the
+/// peer closes before the head is complete and `Io` when the socket fails.
 fn read_http_message(HttpConn c) -> Result<Vec<byte>, HttpError> {
     let acc = leftover_take(c, c.leftover.len());
     let chunk = make_chunk();
@@ -293,7 +311,7 @@ fn read_http_message(HttpConn c) -> Result<Vec<byte>, HttpError> {
     return concat_bytes(head, body);
 }
 
-/// Read a full request or response message from a raw stream (no leftover yet).
+/// Reads one complete HTTP/1.1 message from a fresh stream `s`.
 fn read_request_bytes(Stream s) -> Result<Vec<byte>, HttpError> {
     let c = HttpConn::wrap(s);
     return read_http_message(c)?;

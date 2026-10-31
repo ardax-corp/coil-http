@@ -14,49 +14,108 @@ use http::url::{
     http_err_invalid_header,
 };
 
-/// Outbound HTTP request (method, URL string, headers, body).
+/// An outbound HTTP request: method, URL, extra header fields and body.
+///
+/// Build one with `Request::new` and the setter methods, then pass it to
+/// `Client::send` (HTTP/1.1) or `Client::h2_send` (HTTP/2). `Client::get` and
+/// `Client::post` build one for you.
+///
+/// The client writes `Host`, `Content-Length` and `Connection` itself: fields with
+/// those names added through `header` are dropped. A header name or value that
+/// holds CR / LF makes `send` return `InvalidHeader`.
+///
+/// # Examples
+///
+/// ```
+/// # use tests::assert;
+/// use http::request::Request;
+/// use string::to_bytes;
+///
+/// let req = Request::new();
+/// req.method("PUT");
+/// req.url("http://example.com/items/1");
+/// req.header("Content-Type", "application/json");
+/// req.body(to_bytes("{\"n\":1}"));
+/// assert!(req.method_val() == "PUT");
+/// assert!(req.headers_val().count() == 1);
+/// assert!(req.body_val().len() == 7);
+/// ```
+///
+/// Sending it needs the network:
+///
+/// ```no_run
+/// use http::client::Client;
+/// use http::request::Request;
+///
+/// fn main() {
+///     let c = Client::new();
+///     let req = Request::new();
+///     req.method("DELETE");
+///     req.url("http://example.com/items/1");
+///     let status = match c.send(req) {
+///         Result::Ok(r) => r.status,
+///         Result::Err(e) => panic show(e),
+///     };
+///     if status != 204 {
+///         panic "delete failed";
+///     }
+/// }
+/// ```
 class Request {
+    /// Request method, `GET` by default.
     pub method: string,
+    /// Absolute URL string, parsed when the request is sent.
     pub url_str: string,
+    /// Extra header fields, sent in order after `Host`.
     pub headers: Headers,
+    /// Request body; empty by default.
     pub body: Vec<byte>,
 }
 
 impl Request {
+    /// A `GET` request with no URL, headers or body.
     pub static fn new() -> Request {
         let hs = empty_headers();
         let body: Vec<byte> = Vec::new();
         return new Request("GET", "", hs, body);
     }
 
+    /// Sets the method (`GET`, `POST`, `PUT`, ...). It is sent as written.
     pub fn method(string m) {
         self.method = m;
     }
 
+    /// Sets the absolute URL (`http://` or `https://`).
     pub fn url(string u) {
         self.url_str = u;
     }
 
+    /// Appends a header field. `Host`, `Content-Length` and `Connection` are ignored.
     pub fn header(string name, string value) {
         self.headers.add(name, value);
     }
 
+    /// Sets the body. `Content-Length` is computed from it.
     pub fn body(Vec<byte> b) {
         self.body = b;
     }
 
+    /// The method.
     pub fn method_val() -> string {
         return self.method;
     }
 
+    /// The URL string.
     pub fn url_val() -> string {
         return self.url_str;
     }
 
+    /// The extra header fields.
     pub fn headers_val() -> Headers {
         return self.headers;
     }
 
+    /// The body.
     pub fn body_val() -> Vec<byte> {
         return self.body;
     }
@@ -367,14 +426,41 @@ fn build_head_prefix(string method, Url u) -> string {
     return method + " " + path + " HTTP/1.1\r\nHost: " + host_hdr + "\r\nContent-Length: ";
 }
 
-/// Serialize HTTP/1.1 request line + Host + Content-Length + Connection: close.
+/// Serializes an HTTP/1.1 request head with `Connection: close`.
+///
+/// Writes the request line, `Host` (with the port unless it is the scheme's
+/// default), `Content-Length: body_len` and `Connection: close`, ending with the
+/// blank line. `headers` is not written; `Client::send` adds extra fields itself.
+///
+/// # Examples
+///
+/// ```
+/// # use tests::assert;
+/// use http::request::build_request_head;
+/// use http::url::{Headers, parse_url};
+/// use string::from_bytes;
+///
+/// let u = match parse_url("http://example.com:8080/x") {
+///     Result::Ok(u) => u,
+///     Result::Err(e) => panic show(e),
+/// };
+/// let head = match build_request_head("GET", u, Headers::new(), 0) {
+///     Result::Ok(b) => b,
+///     Result::Err(e) => panic show(e),
+/// };
+/// let text = match from_bytes(head) {
+///     Result::Ok(s) => s,
+///     Result::Err(_) => panic "not UTF-8",
+/// };
+/// assert!(text == "GET /x HTTP/1.1\r\nHost: example.com:8080\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+/// ```
 fn build_request_head(string method, Url u, Headers headers, int body_len) -> Result<Vec<byte>, HttpError> {
     let prefix = build_head_prefix(method, u);
     let rest = cl_trailer(body_len);
     return concat_bytes(to_bytes(prefix), to_bytes(rest));
 }
 
-/// Same as `build_request_head` but emits Connection: keep-alive.
+/// Same as `build_request_head`, with `Connection: keep-alive`.
 fn build_request_head_keepalive(string method, Url u, Headers headers, int body_len) -> Result<Vec<byte>, HttpError> {
     let prefix = build_head_prefix(method, u);
     let rest = ka_trailer(body_len);

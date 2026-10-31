@@ -3,7 +3,25 @@ use io::{Stream, IoError};
 use string::{from_bytes, to_bytes};
 use tls::error::{TlsError};
 
-/// An HTTP failure. Socket and TLS failures keep the lower layer's error.
+/// An HTTP failure, returned by every fallible call in this package.
+///
+/// Socket and TLS failures keep the lower layer's error (`Io(IoError)`,
+/// `Tls(TlsError)`), so a caller can tell a timeout from a refused connection or a
+/// bad certificate. The enum derives `Show` and `Eq`.
+///
+/// # Examples
+///
+/// ```
+/// # use tests::assert;
+/// use http::url::{HttpError, parse_url};
+///
+/// let bad = match parse_url("ftp://example.com/") {
+///     Result::Ok(_) => false,
+///     Result::Err(HttpError::UnsupportedScheme) => true,
+///     Result::Err(_) => false,
+/// };
+/// assert!(bad);
+/// ```
 #[derive(Show, Eq)]
 enum HttpError {
     /// The URL does not parse, or its host or path holds CR / LF.
@@ -22,63 +40,110 @@ enum HttpError {
     Tls(TlsError),
 }
 
-/// Parsed `http`/`https`/`ws`/`wss` URL (scheme, host, port, path).
+/// A parsed `http`, `https`, `ws` or `wss` URL.
+///
+/// Built by `parse_url`. The query string, if any, stays on `path`
+/// (`/search?q=coil`); there is no separate fragment or user-info part.
+///
+/// # Examples
+///
+/// ```
+/// # use tests::assert;
+/// use http::url::parse_url;
+///
+/// let u = match parse_url("https://example.com:8443/a?b=1") {
+///     Result::Ok(u) => u,
+///     Result::Err(e) => panic show(e),
+/// };
+/// assert!(u.scheme == "https");
+/// assert!(u.host == "example.com");
+/// assert!(u.port == 8443);
+/// assert!(u.path == "/a?b=1");
+/// ```
 class Url {
+    /// Scheme: `http`, `https`, `ws` or `wss`.
     pub scheme: string,
+    /// Host name or IPv4 address, without the port.
     pub host: string,
+    /// Port: the explicit one, or 80 for `http`/`ws` and 443 for `https`/`wss`.
     pub port: int,
+    /// Path and query (`/a?b=1`); `/` when the URL has none.
     pub path: string,
 }
 
-/// Parallel name/value header pairs for requests and responses.
+/// An ordered list of header fields, kept as parallel name and value vectors.
+///
+/// Names keep the case they were added or received with, and duplicates are
+/// allowed. Used for request headers (`Request::header`), parsed request headers
+/// (`IncomingRequest.headers`) and HTTP/2 header blocks.
+///
+/// # Examples
+///
+/// ```
+/// # use tests::assert;
+/// use http::url::Headers;
+///
+/// let h = Headers::new();
+/// h.add("Accept", "text/plain");
+/// h.add("X-Trace", "abc");
+/// assert!(h.count() == 2);
+/// assert!(h.name_at(1) == "X-Trace");
+/// assert!(h.value_at(1) == "abc");
+/// ```
 class Headers {
+    /// Field names, in insertion order.
     pub names: Vec<string>,
+    /// Field values; `values[i]` belongs to `names[i]`.
     pub values: Vec<string>,
 }
 
 impl Headers {
-    /// Empty header list.
+    /// An empty header list.
     pub static fn new() -> Headers {
         let names: Vec<string> = Vec::new();
         let values: Vec<string> = Vec::new();
         return new Headers(names, values);
     }
 
-    /// Append a header name/value pair.
+    /// Appends the field `name: value`. An existing field with the same name is kept.
     pub fn add(string name, string value) {
         self.names.push(name);
         self.values.push(value);
     }
 
-    /// Number of header pairs.
+    /// The number of fields.
     pub fn count() -> int {
         return self.names.len();
     }
 
-    /// Header name at index `i`.
+    /// The name of field `i`. Panics if `i` is out of range.
     pub fn name_at(int i) -> string {
         return self.names[i];
     }
 
-    /// Header value at index `i`.
+    /// The value of field `i`. Panics if `i` is out of range.
     pub fn value_at(int i) -> string {
         return self.values[i];
     }
 }
 
 impl Url {
+    /// The scheme (same as the `scheme` field).
     pub fn scheme_val() -> string {
         return self.scheme;
     }
 
+    /// The host (same as the `host` field).
     pub fn host_val() -> string {
         return self.host;
     }
 
+    /// The port (same as the `port` field).
     pub fn port_val() -> int {
         return self.port;
     }
 
+    /// The path and query (same as the `path` field).
     pub fn path_val() -> string {
         return self.path;
     }
@@ -140,7 +205,7 @@ fn bytes_to_string(Vec<byte> b) -> Result<string, HttpError> {
     };
 }
 
-/// Find `needle` in `hay`; returns index or 999999 if missing.
+// Find `needle` in `hay`; returns index or 999999 if missing.
 fn find_bytes(Vec<byte> hay, Vec<byte> needle) -> int {
     let hn = hay.len();
     let nn = needle.len();
@@ -283,12 +348,41 @@ fn http_fail_tls_unit(TlsError e) -> Result<(), HttpError> {
     raise HttpError::Tls(e);
 }
 
-/// No listener: `Server.bind` was not called.
+// No listener: `Server.bind` was not called.
 fn http_not_bound() -> Result<Stream, HttpError> {
     raise HttpError::Io(IoError::InvalidInput);
 }
 
-/// Parse `http://`, `https://`, `ws://`, or `wss://` URL string.
+/// Parses an `http://`, `https://`, `ws://` or `wss://` URL.
+///
+/// The port defaults to 80 (`http`, `ws`) or 443 (`https`, `wss`) and the path to
+/// `/`. A query string with no path (`http://host?q=1`) becomes the path `?q=1`.
+///
+/// Returns `BadUrl` when there is no `://`, the host is empty, the port is not
+/// decimal digits, or the host or path holds CR / LF; `UnsupportedScheme` for any
+/// other scheme. IPv6 literals (`[::1]`) are not supported.
+///
+/// # Examples
+///
+/// ```
+/// # use tests::assert;
+/// use http::url::parse_url;
+///
+/// let u = match parse_url("http://localhost:8080/health") {
+///     Result::Ok(u) => u,
+///     Result::Err(e) => panic show(e),
+/// };
+/// assert!(u.host == "localhost");
+/// assert!(u.port == 8080);
+/// assert!(u.path == "/health");
+///
+/// let plain = match parse_url("https://example.com") {
+///     Result::Ok(u) => u,
+///     Result::Err(e) => panic show(e),
+/// };
+/// assert!(plain.port == 443);
+/// assert!(plain.path == "/");
+/// ```
 fn parse_url(string s) -> Result<Url, HttpError> {
     let b = to_bytes(s);
     let sep = to_bytes("://");

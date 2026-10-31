@@ -20,14 +20,42 @@ use io::{Stream, close as io_close, read, IoError, wait_readable};
 use string::{to_bytes};
 use io::sync::{write_all};
 
+/// One HTTP/2 frame (RFC 7540 §4.1): type, flags, stream id and payload.
+///
+/// Most programs use `Client::h2_get` or `h2_serve_all` and never see frames.
+/// `encode_frame` / `decode_frame` convert to and from the 9-byte header form;
+/// the `*_frame` functions build each frame type.
+///
+/// # Examples
+///
+/// ```
+/// # use tests::assert;
+/// use http::h2::{data_frame, decode_frame, encode_frame, flag_end_stream, frame_type_data};
+/// use string::to_bytes;
+///
+/// let wire = encode_frame(data_frame(1, to_bytes("hi"), 1));
+/// assert!(wire.len() == 9 + 2);
+/// let f = match decode_frame(wire) {
+///     Result::Ok(f) => f,
+///     Result::Err(e) => panic show(e),
+/// };
+/// assert!(f.typ == frame_type_data());
+/// assert!(f.flags == flag_end_stream());
+/// assert!(f.stream_id == 1);
+/// ```
 class H2Frame {
+    /// Frame type (`frame_type_*`).
     pub typ: int,
+    /// Flag bits (`flag_*`).
     pub flags: int,
+    /// Stream identifier; 0 for connection-level frames.
     pub stream_id: int,
+    /// Frame payload.
     pub payload: Vec<byte>,
 }
 
 impl H2Frame {
+    /// A frame from its parts.
     pub static fn new(int typ, int flags, int stream_id, Vec<byte> payload) -> H2Frame {
         return new H2Frame(typ, flags, stream_id, payload);
     }
@@ -35,22 +63,27 @@ impl H2Frame {
 
 /// SETTINGS identifier/value pairs (RFC 7540 §6.5).
 class H2Settings {
+    /// Setting identifiers (`settings_id_*`).
     pub ids: Vec<int>,
+    /// Setting values; `values[i]` belongs to `ids[i]`.
     pub values: Vec<int>,
 }
 
 impl H2Settings {
+    /// An empty list of settings.
     pub static fn new() -> H2Settings {
         let ids: Vec<int> = Vec::new();
         let values: Vec<int> = Vec::new();
         return new H2Settings(ids, values);
     }
 
+    /// Appends the setting `id = value`.
     pub fn add(int id, int value) {
         self.ids.push(id);
         self.values.push(value);
     }
 
+    /// The number of settings.
     pub fn count() -> int {
         return self.ids.len();
     }
@@ -58,96 +91,120 @@ impl H2Settings {
 
 /// GOAWAY last-stream-id and error code (RFC 7540 §6.8). Debug data after 8 bytes is ignored on decode.
 class H2Goaway {
+    /// Highest stream id the sender may still process.
     pub last_stream_id: int,
+    /// Error code (`h2_err_*`; 0 is NO_ERROR).
     pub error_code: int,
 }
 
 impl H2Goaway {
+    /// A GOAWAY body from its parts.
     pub static fn new(int last_stream_id, int error_code) -> H2Goaway {
         return new H2Goaway(last_stream_id, error_code);
     }
 }
 
+/// Frame type 0x0, DATA.
 fn frame_type_data() -> int {
     return 0;
 }
 
+/// Frame type 0x1, HEADERS.
 fn frame_type_headers() -> int {
     return 1;
 }
 
+/// Frame type 0x4, SETTINGS.
 fn frame_type_settings() -> int {
     return 4;
 }
 
+/// Frame type 0x6, PING.
 fn frame_type_ping() -> int {
     return 6;
 }
 
+/// Frame type 0x7, GOAWAY.
 fn frame_type_goaway() -> int {
     return 7;
 }
 
+/// Frame type 0x5, PUSH_PROMISE.
 fn frame_type_push_promise() -> int {
     return 5;
 }
 
+/// Frame type 0x8, WINDOW_UPDATE.
 fn frame_type_window_update() -> int {
     return 8;
 }
 
+/// Frame type 0x2, PRIORITY (ignored on receipt).
 fn frame_type_priority() -> int {
     return 2;
 }
 
+/// Frame type 0x3, RST_STREAM.
 fn frame_type_rst_stream() -> int {
     return 3;
 }
 
+/// Frame type 0x9, CONTINUATION.
 fn frame_type_continuation() -> int {
     return 9;
 }
 
+/// Setting 0x1, SETTINGS_HEADER_TABLE_SIZE.
 fn settings_id_header_table_size() -> int {
     return 1;
 }
 
+/// Setting 0x2, SETTINGS_ENABLE_PUSH.
 fn settings_id_enable_push() -> int {
     return 2;
 }
 
+/// Setting 0x3, SETTINGS_MAX_CONCURRENT_STREAMS.
 fn settings_id_max_concurrent() -> int {
     return 3;
 }
 
+/// Setting 0x4, SETTINGS_INITIAL_WINDOW_SIZE.
 fn settings_id_initial_window() -> int {
     return 4;
 }
 
+/// Setting 0x5, SETTINGS_MAX_FRAME_SIZE.
 fn settings_id_max_frame_size() -> int {
     return 5;
 }
 
+/// Largest allowed SETTINGS_MAX_FRAME_SIZE (2^24 - 1).
 fn h2_max_frame_setting() -> int {
     return 16777215;
 }
 
+/// Error code 0x1, PROTOCOL_ERROR.
 fn h2_err_protocol() -> int {
     return 1;
 }
 
+/// Error code 0x3, FLOW_CONTROL_ERROR.
 fn h2_err_flow_control() -> int {
     return 3;
 }
 
+/// Error code 0x6, FRAME_SIZE_ERROR.
 fn h2_err_frame_size() -> int {
     return 6;
 }
 
+/// Error code 0x7, REFUSED_STREAM.
 fn h2_err_refused_stream() -> int {
     return 7;
 }
 
+/// Default maximum frame payload, 16384 bytes.
 fn default_max_frame_payload() -> int {
     return 16384;
 }
@@ -156,14 +213,17 @@ fn h2_end_headers_set(int flags) -> int {
     return (flags / 4) % 2;
 }
 
+/// Flag 0x1, ACK (SETTINGS, PING).
 fn flag_ack() -> int {
     return 1;
 }
 
+/// Flag 0x1, END_STREAM (DATA, HEADERS).
 fn flag_end_stream() -> int {
     return 1;
 }
 
+/// Flag 0x4, END_HEADERS (HEADERS, PUSH_PROMISE, CONTINUATION).
 fn flag_end_headers() -> int {
     return 4;
 }
@@ -183,6 +243,7 @@ fn push_u8(Vec<byte> out, int n) {
     out.push(b);
 }
 
+/// Encodes `f` as the 9-byte frame header followed by its payload.
 fn encode_frame(H2Frame f) -> Vec<byte> {
     let n = f.payload.len();
     let out: Vec<byte> = Vec::new();
@@ -237,10 +298,12 @@ fn decode_frame(Vec<byte> raw) -> Result<H2Frame, HttpError> {
     return H2Frame::new(typ, flags, sid, payload);
 }
 
+/// The 24-byte client connection preface, `PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n`.
 fn connection_preface() -> Vec<byte> {
     return to_bytes("PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n");
 }
 
+/// 1 when `raw` starts with the connection preface, otherwise 0.
 fn preface_ok(Vec<byte> raw) -> int {
     let want = connection_preface();
     if raw.len() < want.len() {
@@ -256,6 +319,7 @@ fn preface_ok(Vec<byte> raw) -> int {
     return 1;
 }
 
+/// A SETTINGS frame with no parameters.
 fn empty_settings_frame() -> H2Frame {
     let payload: Vec<byte> = Vec::new();
     return H2Frame::new(frame_type_settings(), 0, 0, payload);
@@ -309,10 +373,12 @@ fn decode_settings_payload(Vec<byte> raw) -> Result<H2Settings, HttpError> {
     return s;
 }
 
+/// A SETTINGS frame carrying `s`.
 fn settings_frame(H2Settings s) -> H2Frame {
     return H2Frame::new(frame_type_settings(), 0, 0, encode_settings_payload(s));
 }
 
+/// A SETTINGS frame with the ACK flag and no payload.
 fn settings_ack_frame() -> H2Frame {
     let payload: Vec<byte> = Vec::new();
     return H2Frame::new(frame_type_settings(), flag_ack(), 0, payload);
@@ -344,6 +410,7 @@ fn decode_window_update_payload(Vec<byte> raw) -> Result<int, HttpError> {
     return inc;
 }
 
+/// A WINDOW_UPDATE frame. Returns `Protocol` when `increment` is 0.
 fn window_update_frame(int stream_id, int increment) -> Result<H2Frame, HttpError> {
     let payload = encode_window_update_payload(increment)?;
     return H2Frame::new(frame_type_window_update(), 0, stream_id, payload);
@@ -367,6 +434,7 @@ fn decode_goaway_payload(Vec<byte> raw) -> Result<H2Goaway, HttpError> {
     return H2Goaway::new(last, code);
 }
 
+/// A GOAWAY frame on stream 0.
 fn goaway_frame(int last_stream_id, int error_code) -> H2Frame {
     return H2Frame::new(frame_type_goaway(), 0, 0, encode_goaway_payload(last_stream_id, error_code));
 }
@@ -383,12 +451,14 @@ fn ping_frame(Vec<byte> payload, int ack) -> Result<H2Frame, HttpError> {
     return H2Frame::new(frame_type_ping(), flags, 0, payload);
 }
 
+/// A RST_STREAM frame ending `stream_id` with `error_code`.
 fn rst_stream_frame(int stream_id, int error_code) -> H2Frame {
     let payload: Vec<byte> = Vec::new();
     push_u32(payload, error_code);
     return H2Frame::new(frame_type_rst_stream(), 0, stream_id, payload);
 }
 
+/// The error code of a RST_STREAM payload. Returns `Protocol` unless it is 4 bytes.
 fn decode_rst_payload(Vec<byte> raw) -> Result<int, HttpError> {
     if raw.len() != 4 {
         http_err_protocol()?;
@@ -414,6 +484,7 @@ fn headers_from_frame_with(H2Frame f, HpackTable t) -> Result<Headers, HttpError
     return decode_header_block_with(f.payload, t)?;
 }
 
+/// Decodes a HEADERS frame's header block with a fresh HPACK table.
 fn headers_from_frame(H2Frame f) -> Result<Headers, HttpError> {
     return headers_from_frame_with(f, HpackTable::new(4096))?;
 }
@@ -489,22 +560,27 @@ fn encode_headers_block_frames(int stream_id, Vec<byte> block, int end_stream, i
     return out;
 }
 
+/// HPACK-encodes `h` and splits it into HEADERS + CONTINUATION frames, as `encode_headers_block_frames`.
 fn headers_frames(int stream_id, Headers h, int end_stream, int max_payload) -> Vec<byte> {
     return encode_headers_block_frames(stream_id, encode_header_block(h), end_stream, max_payload);
 }
 
-/// PUSH_PROMISE promised-id plus remaining header-block fragment.
+/// A decoded PUSH_PROMISE payload: the promised stream id and the header-block fragment.
 class H2Push {
+    /// The stream id the server promises (even, nonzero).
     pub promised_id: int,
+    /// HPACK header-block fragment.
     pub block: Vec<byte>,
 }
 
 impl H2Push {
+    /// A push promise from its parts.
     pub static fn new(int promised_id, Vec<byte> block) -> H2Push {
         return new H2Push(promised_id, block);
     }
 }
 
+/// A PUSH_PROMISE payload: the promised id followed by `block`.
 fn encode_push_promise_payload(int promised_id, Vec<byte> block) -> Vec<byte> {
     let out: Vec<byte> = Vec::new();
     push_u32(out, promised_id % two31());
@@ -512,6 +588,7 @@ fn encode_push_promise_payload(int promised_id, Vec<byte> block) -> Vec<byte> {
     return out;
 }
 
+/// Decodes a PUSH_PROMISE payload. Returns `Protocol` when it is shorter than 4 bytes or the promised id is 0 or odd.
 fn decode_push_promise_payload(Vec<byte> raw) -> Result<H2Push, HttpError> {
     if raw.len() < 4 {
         http_err_protocol()?;
@@ -527,6 +604,7 @@ fn decode_push_promise_payload(Vec<byte> raw) -> Result<H2Push, HttpError> {
     return H2Push::new(promised, block);
 }
 
+/// A single PUSH_PROMISE frame (END_HEADERS set) promising `promised_id` with request fields `h`.
 fn push_promise_frame(int stream_id, int promised_id, Headers h) -> H2Frame {
     let payload = encode_push_promise_payload(promised_id, encode_header_block(h));
     return H2Frame::new(frame_type_push_promise(), flag_end_headers(), stream_id, payload);
@@ -563,6 +641,7 @@ fn encode_push_promise_frames(int stream_id, int promised_id, Headers h, int max
     return out;
 }
 
+/// Applies any SETTINGS_HEADER_TABLE_SIZE in `s` to the HPACK table `t`.
 fn apply_settings_to_table(HpackTable t, H2Settings s) {
     let i = 0;
     let n = s.count();
@@ -574,7 +653,7 @@ fn apply_settings_to_table(HpackTable t, H2Settings s) {
     }
 }
 
-/// `:authority` is `host` on default ports, otherwise `host:port`.
+// `:authority` is `host` on default ports, otherwise `host:port`.
 fn h2_authority(Url u) -> string {
     let host = u.host;
     let port = u.port;
@@ -648,7 +727,7 @@ fn h2_close(Stream s) {
     };
 }
 
-/// `wait` 0: empty vec if no bytes are ready. Partial frames always wait to complete.
+// `wait` 0: empty vec if no bytes are ready. Partial frames always wait to complete.
 fn h2_read_n_wait(Stream s, int n, int wait) -> Result<Vec<byte>, HttpError> {
     if n == 0 {
         let empty: Vec<byte> = Vec::new();
@@ -735,11 +814,12 @@ fn h2_read_n_wait(Stream s, int n, int wait) -> Result<Vec<byte>, HttpError> {
     return buf;
 }
 
-/// Blocking read of `n` bytes. Waits on `WouldBlock`; EOF is Protocol.
+/// Reads exactly `n` bytes from `s`, waiting while none are ready. Returns `Protocol` at end of stream.
 fn h2_read_n(Stream s, int n) -> Result<Vec<byte>, HttpError> {
     return h2_read_n_wait(s, n, 1)?;
 }
 
+/// Writes the encoded frame `f` to `s`.
 fn h2_write_frame(Stream s, H2Frame f) -> Result<(), HttpError> {
     match write_all(s, encode_frame(f)) {
         Result::Ok(_) => 0,
@@ -751,7 +831,7 @@ fn h2_write_frame(Stream s, H2Frame f) -> Result<(), HttpError> {
     return ();
 }
 
-/// One complete frame: 9-byte header, then payload; `frame_wire_len` must match.
+/// Reads one complete frame from `s`, waiting while none is ready.
 fn h2_read_frame(Stream s) -> Result<H2Frame, HttpError> {
     let hdr = h2_read_n(s, 9)?;
     let n = u8_at(hdr, 0) * 65536 + u8_at(hdr, 1) * 256 + u8_at(hdr, 2);
@@ -763,7 +843,7 @@ fn h2_read_frame(Stream s) -> Result<H2Frame, HttpError> {
     return decode_frame(raw)?;
 }
 
-/// Non-blocking first byte: `None` if nothing is ready. Completes a partial frame.
+/// Reads one frame if its first byte is already available, otherwise returns `None` without waiting.
 fn h2_try_read_frame(Stream s) -> Result<Option<H2Frame>, HttpError> {
     let hdr = h2_read_n_wait(s, 9, 0)?;
     if hdr.len() == 0 {
@@ -823,17 +903,17 @@ fn h2_http11_exchange(Stream s, string method, Url u, Headers headers, Vec<byte>
     return resp;
 }
 
-/// Client ALPN offer list for HTTPS `h2_connect` (prefer h2, allow HTTP/1.1).
+/// The client ALPN offer, `h2,http/1.1`.
 fn h2_client_alpn() -> string {
     return "h2,http/1.1";
 }
 
-/// Server ALPN offer: HTTP/2 when selected, otherwise HTTP/1.1 on the same listener.
+/// The server ALPN list, `h2,http/1.1`: HTTP/2 when the client offers it, otherwise HTTP/1.1.
 fn h2_server_alpn() -> string {
     return "h2,http/1.1";
 }
 
-/// Exact ALPN `h2` means speak HTTP/2; anything else (incl. empty) falls back to HTTP/1.1.
+/// 1 when the negotiated ALPN protocol is exactly `h2`; anything else, including empty, means HTTP/1.1.
 fn h2_alpn_is_h2(string proto) -> int {
     if proto == "h2" {
         return 1;
