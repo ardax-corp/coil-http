@@ -16,11 +16,11 @@ coil --root ../coil-http/src --root ../coil-tls/src --root ../coil-stdlib/src \
 
 ## With spool
 
-coil-tls has no tags yet, so this repo's `coil.toml` requires `tls` at `version = "latest"` (the default branch tip, spool#32). Track this repo the same way; the `v0.1.0` tag still declares `tls = "^0.1"`, which does not resolve:
-
 ```bash
-spool add http --git https://github.com/ardax-corp/coil-http.git --version latest
+spool add http --git https://github.com/ardax-corp/coil-http.git --rev <commit SHA>
 ```
+
+Pin a commit with `--rev`: the `v0.1.0` tag predates this repo's current `tls` requirement (it declares `tls = "^0.1"`, and coil-tls has no tags), so it does not resolve. This repo's own `coil.toml` requires `tls` at `version = "latest"` (the coil-tls default branch tip, spool#32); `--version latest` tracks this repo's tip the same way.
 
 The consumer `coil.toml` then looks like this:
 
@@ -36,7 +36,7 @@ attach = true
 allow = ["tls"]
 
 [dependencies]
-http = { git = "https://github.com/ardax-corp/coil-http.git", version = "latest" }
+http = { git = "https://github.com/ardax-corp/coil-http.git", rev = "<commit SHA>" }
 tls = { git = "https://github.com/ardax-corp/coil-tls.git", version = "latest", trusted = true }
 ```
 
