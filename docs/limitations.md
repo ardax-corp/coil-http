@@ -15,7 +15,6 @@
 ## Compiler workarounds
 
 - `body_len_str` / `cl_trailer` lookup tables avoid SEGV when concatenating `int_to_dec` in Result-mode request builders
-- `build_request_head` hot path is raise-free
 - Prefer `http://host/?q=` over bare `host?q=` in URLs
 
 ## TLS

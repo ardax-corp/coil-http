@@ -11,6 +11,7 @@ use http::url::{
     url_host,
     url_port,
     url_scheme,
+    headers_have_crlf,
     http_err_invalid_header,
 };
 
@@ -392,45 +393,14 @@ fn format_extra_headers(Headers headers) -> Vec<byte> {
     return to_bytes(s);
 }
 
-fn build_head_prefix(string method, Url u) -> string {
-    let host = u.host;
-    let port = u.port;
-    let scheme = u.scheme;
-    let path = u.path;
-    let host_hdr = host;
-    if scheme == "http" {
-        if port != 80 {
-            host_hdr = host + ":" + int_to_dec(port);
-        }
-    } else {
-        if scheme == "ws" {
-            if port != 80 {
-                host_hdr = host + ":" + int_to_dec(port);
-            }
-        } else {
-            if scheme == "https" {
-                if port != 443 {
-                    host_hdr = host + ":" + int_to_dec(port);
-                }
-            } else {
-                if scheme == "wss" {
-                    if port != 443 {
-                        host_hdr = host + ":" + int_to_dec(port);
-                    }
-                } else {
-                    host_hdr = host + ":" + int_to_dec(port);
-                }
-            }
-        }
-    }
-    return method + " " + path + " HTTP/1.1\r\nHost: " + host_hdr + "\r\nContent-Length: ";
-}
-
 /// Serializes an HTTP/1.1 request head with `Connection: close`.
 ///
 /// Writes the request line, `Host` (with the port unless it is the scheme's
-/// default), `Content-Length: body_len` and `Connection: close`, ending with the
-/// blank line. `headers` is not written; `Client::send` adds extra fields itself.
+/// default), the `headers` fields in order, `Content-Length: body_len` and
+/// `Connection: close`, ending with the blank line. Fields named `Host`,
+/// `Content-Length` or `Connection` are dropped, as for
+/// `Request::header`. Returns `InvalidHeader` when a header name or value holds
+/// CR / LF.
 ///
 /// # Examples
 ///
@@ -455,16 +425,26 @@ fn build_head_prefix(string method, Url u) -> string {
 /// assert!(text == "GET /x HTTP/1.1\r\nHost: example.com:8080\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
 /// ```
 fn build_request_head(string method, Url u, Headers headers, int body_len) -> Result<Vec<byte>, HttpError> {
-    let prefix = build_head_prefix(method, u);
-    let rest = cl_trailer(body_len);
-    return concat_bytes(to_bytes(prefix), to_bytes(rest));
+    let extras = head_extras(headers)?;
+    return build_request_head_extras(method, u, extras, body_len)?;
 }
 
 /// Same as `build_request_head`, with `Connection: keep-alive`.
 fn build_request_head_keepalive(string method, Url u, Headers headers, int body_len) -> Result<Vec<byte>, HttpError> {
-    let prefix = build_head_prefix(method, u);
-    let rest = ka_trailer(body_len);
-    return concat_bytes(to_bytes(prefix), to_bytes(rest));
+    let extras = head_extras(headers)?;
+    return build_request_head_extras_keepalive(method, u, extras, body_len)?;
+}
+
+// The non-reserved `headers` fields as `Name: value\r\n` lines ("" for none).
+fn head_extras(Headers headers) -> Result<string, HttpError> {
+    if headers_have_crlf(headers.names, headers.values) == 1 {
+        http_err_invalid_header()?;
+    }
+    let s = format_extra_headers_str(headers.names, headers.values);
+    if s == "__NONE__" {
+        return "";
+    }
+    return extras_sanitize(s)?;
 }
 
 fn build_request_head_extras(string method, Url u, string extras, int body_len) -> Result<Vec<byte>, HttpError> {
