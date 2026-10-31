@@ -11,6 +11,7 @@ use http::url::{
     url_host,
     url_port,
     url_scheme,
+    header_name_eq_ci,
     headers_have_crlf,
     http_err_invalid_header,
 };
@@ -22,8 +23,8 @@ use http::url::{
 /// `Client::post` build one for you.
 ///
 /// The client writes `Host`, `Content-Length` and `Connection` itself: fields with
-/// those names added through `header` are dropped. A header name or value that
-/// holds CR / LF makes `send` return `InvalidHeader`.
+/// those names (compared case-insensitively) added through `header` are dropped.
+/// A header name or value that holds CR / LF makes `send` return `InvalidHeader`.
 ///
 /// # Examples
 ///
@@ -91,7 +92,8 @@ impl Request {
         self.url_str = u;
     }
 
-    /// Appends a header field. `Host`, `Content-Length` and `Connection` are ignored.
+    /// Appends a header field. `Host`, `Content-Length` and `Connection`, in any
+    /// case, are ignored.
     pub fn header(string name, string value) {
         self.headers.add(name, value);
     }
@@ -344,17 +346,18 @@ fn ka_trailer(int body_len) -> string {
     }
 }
 
+// `Host`, `Content-Length` and `Connection` are written by the builders; field
+// names compare case-insensitively (RFC 9110 §5.1).
 fn is_reserved_request_header(string name) -> int {
-    if name == "Host" { return 1; }
-    if name == "host" { return 1; }
-    if name == "HOST" { return 1; }
-    if name == "Content-Length" { return 1; }
-    if name == "content-length" { return 1; }
-    if name == "CONTENT-LENGTH" { return 1; }
-    if name == "Content-length" { return 1; }
-    if name == "Connection" { return 1; }
-    if name == "connection" { return 1; }
-    if name == "CONNECTION" { return 1; }
+    if header_name_eq_ci(name, "Host") == 1 {
+        return 1;
+    }
+    if header_name_eq_ci(name, "Content-Length") == 1 {
+        return 1;
+    }
+    if header_name_eq_ci(name, "Connection") == 1 {
+        return 1;
+    }
     return 0;
 }
 
@@ -398,7 +401,7 @@ fn format_extra_headers(Headers headers) -> Vec<byte> {
 /// Writes the request line, `Host` (with the port unless it is the scheme's
 /// default), the `headers` fields in order, `Content-Length: body_len` and
 /// `Connection: close`, ending with the blank line. Fields named `Host`,
-/// `Content-Length` or `Connection` are dropped, as for
+/// `Content-Length` or `Connection` (in any case) are dropped, as for
 /// `Request::header`. Returns `InvalidHeader` when a header name or value holds
 /// CR / LF.
 ///
