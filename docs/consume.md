@@ -9,7 +9,7 @@ Build `libtls` in a coil-tls checkout (`make -C ../coil-tls/native artifact`), t
 ```bash
 coil --root ../coil-http/src --root ../coil-tls/src --root ../coil-stdlib/src \
   --ffi-search-path ../coil-tls/native --allow-dload tls --dload-trusted tls \
-  --allow-attach --allow-net main.hy
+  --allow-attach --allow-net main.coil
 ```
 
 `--dload-pin tls=SHA256` instead of `--dload-trusted tls` pins the `libtls` build. `--allow-attach` is for TLS (`Stream.attach`); plain `http://` needs only `--allow-net`. `coil package` also needs `--ffi-native name=tls,version=0.1.0,path=../coil-tls/native` for the `tls` stem.
@@ -40,7 +40,7 @@ http = { git = "https://github.com/ardax-corp/coil-http.git", rev = "<commit SHA
 tls = { git = "https://github.com/ardax-corp/coil-tls.git", version = "latest", trusted = true }
 ```
 
-spool links `.spool/deps/<name>` to each checkout's `src/` and also passes each `src/` as a root (spool#30), so `use http::client::Client` resolves to `src/http/client.hy` with no extra roots.
+spool links `.spool/deps/<name>` to each checkout's `src/` and also passes each `src/` as a root (spool#30), so `use http::client::Client` resolves to `src/http/client.coil` with no extra roots.
 
 spool also resolves each dependency's own `[ffi]` paths against its checkout (spool#38): coil-tls's `search_paths = ["./native"]` becomes `--ffi-search-path <tls checkout>/native`, and its `[[ffi.native]]` row goes to `coil package`. This repo's `./.spool/deps/tls/native` (the `scripts/spool_install.sh` layout) is skipped there, since no checkout has it. spool does not build `libtls`; build it once in the tls checkout:
 

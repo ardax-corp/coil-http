@@ -66,7 +66,7 @@ Or with plain `coil` and sibling checkouts of this repo, [coil-tls](https://gith
 ```bash
 coil --root ../coil-http/src --root ../coil-tls/src --root ../coil-stdlib/src \
   --ffi-search-path ../coil-tls/native --allow-dload tls --dload-trusted tls \
-  --allow-attach --allow-net main.hy
+  --allow-attach --allow-net main.coil
 ```
 
 Plain `http://` needs only `--allow-net`. See [docs/consume.md](docs/consume.md) for the full consumer setup.
