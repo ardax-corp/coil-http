@@ -1,4 +1,4 @@
-// H1 request/response roundtrip (no sockets; full loopback in examples/loopback.hy).
+// H1 request/response roundtrip (no sockets; full loopback in examples/loopback.coil).
 use tests::assert;
 use string::{to_bytes};
 use http::url::{find_bytes};
