@@ -65,7 +65,7 @@ use http::h2_session::{H2ClientSlot, h2_slot_close, h2_slot_empty, h2_slot_excha
 ///     let c = Client::new();
 ///     let r = match c.get("https://example.com/") {
 ///         Result::Ok(r) => r,
-///         Result::Err(e) => panic show(e),
+///         Result::Err(e) => panic e.show(),
 ///     };
 ///     if r.status != 200 {
 ///         panic "unexpected status";
@@ -174,7 +174,7 @@ impl Client {
     ///     req.body(to_bytes("{}"));
     ///     match c.send(req) {
     ///         Result::Ok(r) => r.status,
-    ///         Result::Err(e) => panic show(e),
+    ///         Result::Err(e) => panic e.show(),
     ///     };
     /// }
     /// ```
@@ -236,7 +236,7 @@ impl Client {
     ///     match c.get("http://example.com/") {
     ///         Result::Ok(r) => r.status,
     ///         Result::Err(HttpError::Io(IoError::TimedOut)) => 0,
-    ///         Result::Err(e) => panic show(e),
+    ///         Result::Err(e) => panic e.show(),
     ///     };
     /// }
     /// ```

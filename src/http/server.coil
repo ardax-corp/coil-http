@@ -58,7 +58,7 @@ use http::h2_session::{H2Session};
 ///     let h = new Hello();
 ///     let req = match parse_request(to_bytes("GET /missing HTTP/1.1\r\nHost: x\r\n\r\n")) {
 ///         Result::Ok(r) => r,
-///         Result::Err(e) => panic show(e),
+///         Result::Err(e) => panic e.show(),
 ///     };
 ///     assert!(h.handle(req).status == 404);
 /// }
@@ -218,7 +218,7 @@ fn serve_conn_once(Server srv, Stream s, HttpHandler handler) -> Result<(), Http
     let c = HttpConn::wrap(s);
     let raw = read_http_message(c)?;
     let req = parse_request(raw)?;
-    let resp = handle(handler, req);
+    let resp = handler.handle(req);
     let wire = encode_response(resp);
     match write_all(c.stream(), wire) {
         Result::Ok(_) => 0,
@@ -280,7 +280,7 @@ fn serve_conn_loop(Stream s, HttpHandler handler) -> Result<(), HttpError> {
                 },
             };
             if keep_going == 1 {
-                let resp = handle(handler, req);
+                let resp = handler.handle(req);
                 let wire = encode_response(resp);
                 if incoming_wants_close(req) == 0 {
                     wire = encode_response_keepalive(resp);
@@ -468,7 +468,7 @@ fn h2_dispatch_ready(H2Session sess, HttpHandler handler, Vec<int> done_ids) -> 
             if rst == 0 {
                 if h2_int_has(done_ids, sid) == 0 {
                     let req = h2_request_from_stream(sess, sid)?;
-                    let resp = handle(handler, req);
+                    let resp = handler.handle(req);
                     let fields = Headers::new();
                     let hi = 0;
                     while hi < resp.header_names.len() {
