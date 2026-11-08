@@ -17,9 +17,9 @@ fn main() -> Result<(), IoError> {
     let c = Client::new();
     let r = match c.get("https://example.com/") {
         Result::Ok(r) => r,
-        Result::Err(e) => panic show(e),
+        Result::Err(e) => panic e.show(),
     };
-    println("status " + show(r.status) + ", " + show(r.body.len()) + " bytes")?;
+    println("status " + r.status.show() + ", " + r.body.len().show() + " bytes")?;
     c.close();
     return ();
 }
