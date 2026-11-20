@@ -34,11 +34,11 @@ use http::conn::{HttpConn, close_conn};
 ///     pool.max(8);
 ///     let u = match parse_url("http://127.0.0.1:8080/") {
 ///         Result::Ok(u) => u,
-///         Result::Err(e) => panic show(e),
+///         Result::Err(e) => panic e.show(),
 ///     };
 ///     let c = match pool.acquire(u) {
 ///         Result::Ok(c) => c,
-///         Result::Err(e) => panic show(e),
+///         Result::Err(e) => panic e.show(),
 ///     };
 ///     // ... write a request on c.stream(), read the response ...
 ///     pool.release(u, c);
