@@ -43,7 +43,7 @@ use http::server::{Server};
 /// let wire = encode_ws_frame(1, ws_opcode_text(), no_mask, to_bytes("hi"));
 /// let f = match decode_ws_frame(wire) {
 ///     Result::Ok(f) => f,
-///     Result::Err(e) => panic show(e),
+///     Result::Err(e) => panic e.show(),
 /// };
 /// assert!(f.fin == 1);
 /// assert!(f.opcode == ws_opcode_text());

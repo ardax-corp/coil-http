@@ -111,17 +111,17 @@ fn h2_append_bytes(Vec<byte> out, Vec<byte> extra) {
 ///
 /// let u = match parse_url("http://example.com/hello") {
 ///     Result::Ok(u) => u,
-///     Result::Err(e) => panic show(e),
+///     Result::Err(e) => panic e.show(),
 /// };
 /// let sess = H2Session::new();
 /// match sess.feed(h2_prior_knowledge_get(u)) {
 ///     Result::Ok(_) => 0,
-///     Result::Err(e) => panic show(e),
+///     Result::Err(e) => panic e.show(),
 /// };
 /// assert!(sess.stream_count() == 1);
 /// let h = match sess.stream_headers(1) {
 ///     Result::Ok(h) => h,
-///     Result::Err(e) => panic show(e),
+///     Result::Err(e) => panic e.show(),
 /// };
 /// assert!(h.value_at(1) == "/hello");
 /// assert!(sess.drain().len() > 0);
@@ -1743,7 +1743,7 @@ fn h2_request(string url, string method, Headers extra, Vec<byte> body) -> Resul
 /// fn main() {
 ///     let r = match h2_connect("http://127.0.0.1:8080/") {
 ///         Result::Ok(r) => r,
-///         Result::Err(e) => panic show(e),
+///         Result::Err(e) => panic e.show(),
 ///     };
 ///     if r.status != 200 {
 ///         panic "unexpected status";

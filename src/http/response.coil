@@ -45,7 +45,7 @@ use http::url::{
 ///     let c = Client::new();
 ///     let r = match c.get("http://example.com/") {
 ///         Result::Ok(r) => r,
-///         Result::Err(e) => panic show(e),
+///         Result::Err(e) => panic e.show(),
 ///     };
 ///     let kind = header_get(r, "Content-Type");
 ///     let text = from_bytes(r.body);
@@ -143,7 +143,7 @@ fn header_name_at_resp(Response r, int i) -> string {
 /// let raw = to_bytes("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 2\r\n\r\nhi");
 /// let r = match parse_response(raw) {
 ///     Result::Ok(r) => r,
-///     Result::Err(e) => panic show(e),
+///     Result::Err(e) => panic e.show(),
 /// };
 /// assert!(header_get(r, "Content-Type") == "text/plain");
 /// assert!(header_get(r, "X-Missing") == "");
@@ -569,7 +569,7 @@ fn header_block_body_len(Vec<byte> header_bytes) -> Result<int, HttpError> {
 /// let raw = to_bytes("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n2\r\nhi\r\n0\r\n\r\n");
 /// let r = match parse_response(raw) {
 ///     Result::Ok(r) => r,
-///     Result::Err(e) => panic show(e),
+///     Result::Err(e) => panic e.show(),
 /// };
 /// assert!(r.status == 200);
 /// assert!(r.body.len() == 2);

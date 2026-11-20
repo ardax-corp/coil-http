@@ -53,7 +53,7 @@ enum HttpError {
 ///
 /// let u = match parse_url("https://example.com:8443/a?b=1") {
 ///     Result::Ok(u) => u,
-///     Result::Err(e) => panic show(e),
+///     Result::Err(e) => panic e.show(),
 /// };
 /// assert!(u.scheme == "https");
 /// assert!(u.host == "example.com");
@@ -370,7 +370,7 @@ fn http_not_bound() -> Result<Stream, HttpError> {
 ///
 /// let u = match parse_url("http://localhost:8080/health") {
 ///     Result::Ok(u) => u,
-///     Result::Err(e) => panic show(e),
+///     Result::Err(e) => panic e.show(),
 /// };
 /// assert!(u.host == "localhost");
 /// assert!(u.port == 8080);
@@ -378,7 +378,7 @@ fn http_not_bound() -> Result<Stream, HttpError> {
 ///
 /// let plain = match parse_url("https://example.com") {
 ///     Result::Ok(u) => u,
-///     Result::Err(e) => panic show(e),
+///     Result::Err(e) => panic e.show(),
 /// };
 /// assert!(plain.port == 443);
 /// assert!(plain.path == "/");

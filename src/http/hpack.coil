@@ -80,11 +80,11 @@ impl HpackNV {
 /// assert!(second.len() < first.len());
 /// let a = match decode_header_block_with(first, dec) {
 ///     Result::Ok(v) => v,
-///     Result::Err(e) => panic show(e),
+///     Result::Err(e) => panic e.show(),
 /// };
 /// let b = match decode_header_block_with(second, dec) {
 ///     Result::Ok(v) => v,
-///     Result::Err(e) => panic show(e),
+///     Result::Err(e) => panic e.show(),
 /// };
 /// assert!(b.value_at(1) == "abc");
 /// ```
@@ -1093,7 +1093,7 @@ fn decode_header_block_with(Vec<byte> raw, HpackTable t) -> Result<Headers, Http
 /// h.add("content-type", "text/plain");
 /// let back = match decode_header_block(encode_header_block(h)) {
 ///     Result::Ok(v) => v,
-///     Result::Err(e) => panic show(e),
+///     Result::Err(e) => panic e.show(),
 /// };
 /// assert!(back.count() == 2);
 /// assert!(back.name_at(1) == "content-type");

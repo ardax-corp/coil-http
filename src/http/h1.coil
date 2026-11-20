@@ -28,7 +28,7 @@ use http::response::{Response, find_crlf, find_header_end, bytes_slice_resp, par
 /// let raw = to_bytes("POST /items?x=1 HTTP/1.1\r\nHost: example.com\r\nContent-Length: 3\r\n\r\nabc");
 /// let req = match parse_request(raw) {
 ///     Result::Ok(r) => r,
-///     Result::Err(e) => panic show(e),
+///     Result::Err(e) => panic e.show(),
 /// };
 /// assert!(req.method_val() == "POST");
 /// assert!(req.path_val() == "/items?x=1");
@@ -354,11 +354,11 @@ fn encode_response_keepalive(Response r) -> Vec<byte> {
 ///
 /// let wire = match encode_chunked_body(to_bytes("hello")) {
 ///     Result::Ok(b) => b,
-///     Result::Err(e) => panic show(e),
+///     Result::Err(e) => panic e.show(),
 /// };
 /// let back = match decode_chunked_body(wire) {
 ///     Result::Ok(b) => b,
-///     Result::Err(e) => panic show(e),
+///     Result::Err(e) => panic e.show(),
 /// };
 /// assert!(back.len() == 5);
 /// ```
