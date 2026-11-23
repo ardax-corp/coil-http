@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+    branches: [main, feature/native]
 
 # A new push to a pull request cancels that PR's older runs. Runs on the
 # default branch are never cancelled once started.
