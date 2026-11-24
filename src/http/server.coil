@@ -368,7 +368,7 @@ fn serve(Server srv, HttpHandler handler) -> Result<(), HttpError> {
             while keep == 1 {
                 match accept_wait(listener) {
                     Result::Ok(conn) => {
-                        s.spawn(fn () use (srv, conn, mut handler) => serve_accepted(srv, conn, handler));
+                        s.spawn(fn () use (srv, conn, handler) => serve_accepted(srv, conn, handler));
                     },
                     Result::Err(_) => {
                         keep = 0;
