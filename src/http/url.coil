@@ -328,6 +328,11 @@ fn http_err_io(IoError e) -> Result<(), HttpError> {
     raise HttpError::Io(e);
 }
 
+/// `HttpError::Io(e)`, for `map_err`.
+fn http_io(IoError e) -> HttpError {
+    return HttpError::Io(e);
+}
+
 fn http_fail_stream(IoError e) -> Result<Stream, HttpError> {
     raise HttpError::Io(e);
 }
@@ -338,14 +343,6 @@ fn http_fail_bytes(IoError e) -> Result<Vec<byte>, HttpError> {
 
 fn http_fail_unit(IoError e) -> Result<(), HttpError> {
     raise HttpError::Io(e);
-}
-
-fn http_fail_tls(TlsError e) -> Result<Stream, HttpError> {
-    raise HttpError::Tls(e);
-}
-
-fn http_fail_tls_unit(TlsError e) -> Result<(), HttpError> {
-    raise HttpError::Tls(e);
 }
 
 // No listener: `Server.bind` was not called.

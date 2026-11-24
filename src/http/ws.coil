@@ -1,12 +1,11 @@
 // WebSocket (RFC 6455) over HTTP/1.1 upgrade. Framing + handshake; not a new transport.
 use encoding::{encode};
 use conv::{int_to_dec};
-use io::{Stream, close as io_close, read, IoError, wait_readable};
+use io::{IoError};
 use string::{to_bytes};
 use io::net::tcp::connect as tcp_connect;
 use io::sync::{accept_wait, write_all};
 use tls::client::{enable as tls_enable, ClientOpts};
-use tls::server::{enable as tls_server_enable, ServerOpts};
 use http::sha1::{sha1};
 use http::url::{
     HttpError,
@@ -19,14 +18,14 @@ use http::url::{
     http_fail_stream,
     http_fail_unit,
     parse_url,
-    http_fail_tls,
+    http_io,
     http_not_bound,
 };
 use http::h1::{IncomingRequest, parse_request};
 use http::request::{concat_bytes};
 use http::response::{Response, bytes_slice_resp, header_get, parse_response};
-use http::conn::{HttpConn, close_conn, read_http_message};
-use http::server::{Server};
+use http::conn::{Conn, HttpConn, close_conn, read_http_message};
+use http::server::{Server, server_conn};
 
 /// One WebSocket frame (RFC 6455 §5.2), as `ws_recv` and `decode_ws_frame` return it.
 ///
@@ -604,7 +603,7 @@ fn ws_read_n(HttpConn c, int n) -> Result<Vec<byte>, HttpError> {
             scratch.push(0);
             k = k + 1;
         }
-        match read(s, scratch) {
+        match s.read(scratch) {
             Result::Ok(opt) => {
                 match opt {
                     Option::None => {
@@ -612,7 +611,7 @@ fn ws_read_n(HttpConn c, int n) -> Result<Vec<byte>, HttpError> {
                     },
                     Option::Some(got) => {
                         if got == 0 {
-                            match wait_readable(s) {
+                            match s.wait_readable() {
                                 Result::Ok(_) => 0,
                                 Result::Err(e) => {
                                     http_err_io(e)?;
@@ -633,7 +632,7 @@ fn ws_read_n(HttpConn c, int n) -> Result<Vec<byte>, HttpError> {
                 0
             },
             Result::Err(IoError::WouldBlock) => {
-                match wait_readable(s) {
+                match s.wait_readable() {
                     Result::Ok(_) => 0,
                     Result::Err(e) => {
                         http_err_io(e)?;
@@ -748,37 +747,32 @@ fn ws_check_upgrade_resp(Response r, string key) -> Result<(), HttpError> {
     return ();
 }
 
-fn ws_open_stream(Url u, bool verify, string ca_pem) -> Result<Stream, HttpError> {
+fn ws_open_stream(Url u, bool verify, string ca_pem) -> Result<Conn, HttpError> {
     let scheme = u.scheme;
     let host = u.host;
     let port = u.port;
+    if scheme != "ws" && scheme != "wss" {
+        raise HttpError::UnsupportedScheme;
+    }
+    let s = tcp_connect(host, port).map_err(http_io)?;
     if scheme == "ws" {
-        return match tcp_connect(host, port) {
-            Result::Ok(s) => s,
-            Result::Err(e) => http_fail_stream(e)?,
-        };
+        let c: Conn = s;
+        return c;
     }
-    if scheme == "wss" {
-        let s = match tcp_connect(host, port) {
-            Result::Ok(v) => v,
-            Result::Err(e) => http_fail_stream(e)?,
-        };
-        let ca = Option::None;
-        if ca_pem != "" {
-            ca = Option::Some(ca_pem);
-        }
-        return match tls_enable(s, host, new ClientOpts(verify, ca, Option::None, 5000, "")) {
-            Result::Ok(v) => v,
-            Result::Err(e) => {
-                match io_close(s) {
-                    Result::Ok(_) => 0,
-                    Result::Err(_) => 0,
-                };
-                http_fail_tls(e)?
-            },
-        };
+    let ca = Option::None;
+    if ca_pem != "" {
+        ca = Option::Some(ca_pem);
     }
-    raise HttpError::UnsupportedScheme;
+    return match tls_enable(s, host, new ClientOpts(verify, ca, Option::None, 5000, "")) {
+        Result::Ok(t) => {
+            let c: Conn = t;
+            c
+        },
+        Result::Err(e) => {
+            let _ = s.close();
+            raise HttpError::Tls(e);
+        },
+    };
 }
 
 fn ws_handshake_client(HttpConn c, Url u, string key) -> Result<WsConn, HttpError> {
@@ -905,13 +899,7 @@ fn ws_serve_once(Server srv) -> Result<WsConn, HttpError> {
         Result::Ok(s) => s,
         Result::Err(e) => http_fail_stream(e)?,
     };
-    let stream = conn;
-    if srv.use_tls == 1 {
-        stream = match tls_server_enable(conn, new ServerOpts(srv.tls_cert, srv.tls_key, 0, "", "")) {
-            Result::Ok(s) => s,
-            Result::Err(e) => http_fail_tls(e)?,
-        };
-    }
+    let stream = server_conn(srv, conn, 0, "")?;
     let c = HttpConn::wrap(stream);
     let raw = match read_http_message(c) {
         Result::Ok(b) => b,
