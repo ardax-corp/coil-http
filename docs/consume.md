@@ -9,10 +9,10 @@ Build `libtls` in a coil-tls checkout (`make -C ../coil-tls/native artifact`), t
 ```bash
 coil --root ../coil-http/src --root ../coil-tls/src --root ../coil-stdlib/src \
   --ffi-search-path ../coil-tls/native --allow-dload tls --dload-trusted tls \
-  --allow-attach --allow-net main.coil
+  --allow-net main.coil
 ```
 
-`--dload-pin tls=SHA256` instead of `--dload-trusted tls` pins the `libtls` build. `--allow-attach` is for TLS (`Stream.attach`); plain `http://` needs only `--allow-net`. `coil package` also needs `--ffi-native name=tls,version=0.1.0,path=../coil-tls/native` for the `tls` stem.
+`--dload-pin tls=SHA256` instead of `--dload-trusted tls` pins the `libtls` build. HTTP and HTTPS both need only `--allow-net` beyond the FFI grants; plain `http://` needs no FFI. `coil package` also needs `--ffi-native name=tls,version=0.1.0,path=../coil-tls/native` for the `tls` stem.
 
 ## With spool
 
@@ -30,7 +30,6 @@ roots = ["./src"]
 
 [permissions]
 net = true
-attach = true
 
 [ffi]
 allow = ["tls"]

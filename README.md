@@ -66,7 +66,7 @@ Or with plain `coil` and sibling checkouts of this repo, [coil-tls](https://gith
 ```bash
 coil --root ../coil-http/src --root ../coil-tls/src --root ../coil-stdlib/src \
   --ffi-search-path ../coil-tls/native --allow-dload tls --dload-trusted tls \
-  --allow-attach --allow-net main.coil
+  --allow-net main.coil
 ```
 
 Plain `http://` needs only `--allow-net`. See [docs/consume.md](docs/consume.md) for the full consumer setup.
@@ -79,7 +79,7 @@ Plain `http://` needs only `--allow-net`. See [docs/consume.md](docs/consume.md)
 make -C .spool/deps/tls/native artifact
 coil test --root ../coil-stdlib/src --root .spool/deps/tls/src \
   --ffi-search-path .spool/deps/tls/native \
-  --allow-dload tls --dload-trusted tls --allow-attach --allow-net --allow-write
+  --allow-dload tls --dload-trusted tls --allow-net --allow-write
 ```
 
 `coil test` also runs the `///` doc examples in `src/`. `scripts/spool_install.sh` runs `spool install` when spool is on PATH; without spool it checks out the `coil.lock` rev with git. The socket loopbacks in `examples/` need threads, which the test harness does not have: run them with `coil` and the same flags (CI greps each for `ok`).
@@ -96,7 +96,7 @@ coil test --root ../coil-stdlib/src --root .spool/deps/tls/src \
 | `http::h1` | `IncomingRequest` (what a handler receives), HTTP/1.1 request parse and response encode |
 | `http::ws` | WebSocket (RFC 6455) over an HTTP/1.1 upgrade: `ws_connect`, `ws_serve_once`, framing |
 | `http::pool` | `ConnPool`, the per-client pool of idle HTTP/1.1 connections |
-| `http::conn` | `HttpConn`: framed HTTP/1.1 message reads on a socket |
+| `http::conn` | `Conn`, the TCP or TLS connection HTTP runs over; `HttpConn`: framed HTTP/1.1 message reads on a `Conn` |
 | `http::h2` | HTTP/2 frames, connection preface, ALPN helpers |
 | `http::h2_session` | `H2Session` (in-memory HTTP/2 connection state), one-shot `h2_request` / `h2_connect` |
 | `http::hpack` | HPACK header compression (RFC 7541) |

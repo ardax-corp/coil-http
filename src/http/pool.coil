@@ -1,5 +1,4 @@
 // TCP/TLS connection pool for HTTP/1.1 keep-alive (M4).
-use io::{Stream, close};
 use io::net::tcp::connect as tcp_connect;
 use tls::client::{enable as tls_enable, ClientOpts};
 use conv::{int_to_dec};
@@ -7,13 +6,12 @@ use http::url::{
     HttpError,
     Url,
     http_err_unsupported_scheme,
-    http_fail_stream,
     url_host,
     url_port,
     url_scheme,
-    http_fail_tls,
+    http_io,
 };
-use http::conn::{HttpConn, close_conn};
+use http::conn::{Conn, HttpConn, close_conn};
 
 /// Idle HTTP/1.1 connections, keyed by scheme, host and port, for keep-alive.
 ///
@@ -77,33 +75,28 @@ impl ConnPool {
     /// `https` URLs get a verified TLS session. Returns `UnsupportedScheme` for
     /// anything but `http` and `https`, `Io` when connecting fails and `Tls` when
     /// the handshake fails.
-    pub fn open_stream(Url u) -> Result<Stream, HttpError> {
+    pub fn open_stream(Url u) -> Result<Conn, HttpError> {
         let scheme = url_scheme(u)?;
         let host = url_host(u)?;
         let port = url_port(u)?;
+        if scheme != "http" && scheme != "https" {
+            raise HttpError::UnsupportedScheme;
+        }
+        let s = tcp_connect(host, port).map_err(http_io)?;
         if scheme == "http" {
-            return match tcp_connect(host, port) {
-                Result::Ok(s) => s,
-                Result::Err(e) => http_fail_stream(e)?,
-            };
+            let c: Conn = s;
+            return c;
         }
-        if scheme == "https" {
-            let s = match tcp_connect(host, port) {
-                Result::Ok(s) => s,
-                Result::Err(e) => http_fail_stream(e)?,
-            };
-            return match tls_enable(s, host, new ClientOpts(true, Option::None, Option::None, 0, "")) {
-                Result::Ok(s) => s,
-                Result::Err(e) => {
-                    match close(s) {
-                        Result::Ok(_) => 0,
-                        Result::Err(_) => 0,
-                    };
-                    http_fail_tls(e)?
-                },
-            };
-        }
-        raise HttpError::UnsupportedScheme;
+        return match tls_enable(s, host, new ClientOpts(true, Option::None, Option::None, 0, "")) {
+            Result::Ok(t) => {
+                let c: Conn = t;
+                c
+            },
+            Result::Err(e) => {
+                let _ = s.close();
+                raise HttpError::Tls(e);
+            },
+        };
     }
 
     /// An idle connection for `u`'s origin, or a new one from `open_stream`.

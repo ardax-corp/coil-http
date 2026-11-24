@@ -1,16 +1,15 @@
 // HTTP/1.1 cleartext/TLS server.
-use io::{Stream, close as io_close};
+use io::{Stream};
 use string::{to_bytes};
 use io::net::tcp::{listen, local_addr};
 use tls::server::{enable as tls_server_enable, ServerOpts};
-use tls::{alpn_protocol};
 use io::sync::{accept_wait, write_all};
 use task::{scope, Scope};
 
-use http::url::{HttpError, Headers, http_err_protocol, http_err_not_supported, http_fail_stream, http_fail_unit, http_fail_tls, http_fail_tls_unit, http_not_bound};
+use http::url::{HttpError, Headers, http_err_protocol, http_err_not_supported, http_fail_stream, http_fail_unit, http_not_bound};
 use http::h1::{IncomingRequest, encode_response, encode_response_keepalive, incoming_wants_close, parse_request};
 use http::response::{Response};
-use http::conn::{HttpConn, close_conn, read_http_message};
+use http::conn::{Conn, HttpConn, close_conn, read_http_message};
 use http::h2::{
     H2Settings,
     encode_frame,
@@ -202,7 +201,7 @@ impl Server {
         match self.listener {
             Option::None => 0,
             Option::Some(s) => {
-                match io_close(s) {
+                match s.close() {
                     Result::Ok(_) => 0,
                     Result::Err(_) => 0,
                 };
@@ -214,7 +213,27 @@ impl Server {
     }
 }
 
-fn serve_conn_once(Server srv, Stream s, HttpHandler handler) -> Result<(), HttpError> {
+/// The connection to serve on the accepted socket `conn`: a TLS session when
+/// `srv` has a certificate (`Server::tls`), offering `alpn`, otherwise `conn`
+/// itself. A failed handshake closes `conn` and returns `Tls`.
+fn server_conn(Server srv, Stream conn, int timeout_ms, string alpn) -> Result<Conn, HttpError> {
+    if srv.use_tls == 0 {
+        let c: Conn = conn;
+        return c;
+    }
+    return match tls_server_enable(conn, new ServerOpts(srv.tls_cert, srv.tls_key, timeout_ms, "", alpn)) {
+        Result::Ok(t) => {
+            let c: Conn = t;
+            c
+        },
+        Result::Err(e) => {
+            let _ = conn.close();
+            raise HttpError::Tls(e);
+        },
+    };
+}
+
+fn serve_conn_once(Server srv, Conn s, HttpHandler handler) -> Result<(), HttpError> {
     let c = HttpConn::wrap(s);
     let raw = read_http_message(c)?;
     let req = parse_request(raw)?;
@@ -242,19 +261,13 @@ fn serve_once(Server srv, HttpHandler handler) -> Result<(), HttpError> {
         Result::Ok(s) => s,
         Result::Err(e) => http_fail_stream(e)?,
     };
-    let stream = conn;
-    if srv.use_tls == 1 {
-        stream = match tls_server_enable(conn, new ServerOpts(srv.tls_cert, srv.tls_key, 0, "", "")) {
-            Result::Ok(s) => s,
-            Result::Err(e) => http_fail_tls(e)?,
-        };
-    }
+    let stream = server_conn(srv, conn, 0, "")?;
     return serve_conn_once(srv, stream, handler)?;
 }
 
 /// Serves HTTP/1.1 requests on an accepted stream until the client closes, sends
 /// `Connection: close`, or sends a malformed request, then closes the stream.
-fn serve_conn_loop(Stream s, HttpHandler handler) -> Result<(), HttpError> {
+fn serve_conn_loop(Conn s, HttpHandler handler) -> Result<(), HttpError> {
     let c = HttpConn::wrap(s);
     let keep_going = 1;
     while keep_going == 1 {
@@ -316,32 +329,19 @@ fn serve_one_client(Server srv, HttpHandler handler) -> Result<(), HttpError> {
         Result::Ok(s) => s,
         Result::Err(e) => http_fail_stream(e)?,
     };
-    let stream = conn;
-    if srv.use_tls == 1 {
-        stream = match tls_server_enable(conn, new ServerOpts(srv.tls_cert, srv.tls_key, 0, "", "")) {
-            Result::Ok(s) => s,
-            Result::Err(e) => http_fail_tls(e)?,
-        };
-    }
+    let stream = server_conn(srv, conn, 0, "")?;
     return serve_conn_loop(stream, handler)?;
 }
 
 // One accepted connection, in its own task: TLS handshake (when enabled),
 // then HTTP/1.1 until the client closes.
 fn serve_accepted(Server srv, Stream conn, HttpHandler handler) -> int {
-    let stream = conn;
-    if srv.use_tls == 1 {
-        stream = match tls_server_enable(conn, new ServerOpts(srv.tls_cert, srv.tls_key, 0, "", "")) {
-            Result::Ok(s) => s,
-            Result::Err(_) => {
-                match io_close(conn) {
-                    Result::Ok(_) => 0,
-                    Result::Err(_) => 0,
-                };
-                return 0;
-            },
-        };
-    }
+    let stream = match server_conn(srv, conn, 0, "") {
+        Result::Ok(c) => c,
+        Result::Err(_) => {
+            return 0;
+        },
+    };
     match serve_conn_loop(stream, handler) {
         Result::Ok(_) => 0,
         Result::Err(_) => 0,
@@ -368,7 +368,7 @@ fn serve(Server srv, HttpHandler handler) -> Result<(), HttpError> {
             while keep == 1 {
                 match accept_wait(listener) {
                     Result::Ok(conn) => {
-                        s.spawn(fn () use (srv, conn, mut handler) => serve_accepted(srv, conn, handler));
+                        s.spawn(fn () use (srv, conn, handler) => serve_accepted(srv, conn, handler));
                     },
                     Result::Err(_) => {
                         keep = 0;
@@ -378,21 +378,21 @@ fn serve(Server srv, HttpHandler handler) -> Result<(), HttpError> {
             0
         },
     );
-    match io_close(listener) {
+    match listener.close() {
         Result::Ok(_) => 0,
         Result::Err(_) => 0,
     };
     return ();
 }
 
-fn h2_close_stream(Stream s) {
-    match io_close(s) {
+fn h2_close_stream(Conn s) {
+    match s.close() {
         Result::Ok(_) => 0,
         Result::Err(_) => 0,
     };
 }
 
-fn h2_write_bytes(Stream s, Vec<byte> wire) -> Result<(), HttpError> {
+fn h2_write_bytes(Conn s, Vec<byte> wire) -> Result<(), HttpError> {
     if wire.len() == 0 {
         return ();
     }
@@ -541,7 +541,7 @@ fn h2_arm_server(H2Session sess) -> Result<(), HttpError> {
 /// finished stream with `handler`, until the client closes or the session ends
 /// after `GOAWAY`. Closes the stream when done; returns `Protocol` (after sending
 /// `GOAWAY`) when the client breaks HTTP/2.
-fn h2_serve_conn(Stream conn, HttpHandler handler) -> Result<(), HttpError> {
+fn h2_serve_conn(Conn conn, HttpHandler handler) -> Result<(), HttpError> {
     let sess = H2Session::new();
     match h2_arm_server(sess) {
         Result::Ok(_) => 0,
@@ -657,24 +657,9 @@ fn h2_serve_conn(Stream conn, HttpHandler handler) -> Result<(), HttpError> {
 }
 
 fn h2_accept_one(Server srv, Stream conn, HttpHandler handler, int once) -> Result<(), HttpError> {
-    let stream = conn;
+    let stream = server_conn(srv, conn, 5000, h2_server_alpn())?;
     if srv.use_tls == 1 {
-        stream = match tls_server_enable(conn, new ServerOpts(srv.tls_cert, srv.tls_key, 5000, "", h2_server_alpn())) {
-            Result::Ok(s) => s,
-            Result::Err(e) => {
-                h2_close_stream(conn);
-                http_fail_tls(e)?
-            },
-        };
-        let proto = match alpn_protocol(stream) {
-            Result::Ok(p) => p,
-            Result::Err(e) => {
-                h2_close_stream(stream);
-                http_fail_tls_unit(e)?;
-                ""
-            },
-        };
-        if h2_alpn_is_h2(proto) == 0 {
+        if h2_alpn_is_h2(stream.protocol()) == 0 {
             if once == 1 {
                 return serve_conn_once(srv, stream, handler)?;
             }
@@ -728,7 +713,7 @@ fn h2_serve_all(Server srv, HttpHandler handler) -> Result<(), HttpError> {
             };
         }
     }
-    match io_close(listener) {
+    match listener.close() {
         Result::Ok(_) => 0,
         Result::Err(_) => 0,
     };
