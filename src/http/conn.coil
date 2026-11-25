@@ -1,19 +1,102 @@
-// Per-connection HTTP/1.1 framed reads (headers + Content-Length body).
-use io::{Stream, close, read, IoError, wait_readable};
+// `Conn`, the connection HTTP runs over (a TCP `Stream` or a TLS
+// `TlsStream`), and per-connection HTTP/1.1 framed reads (headers +
+// Content-Length body).
+use io::{Stream, IoError, Read, Write, Close};
 use io::sync::{read_exact};
+use tls::stream::{TlsStream};
 use http::url::{HttpError, http_err_protocol, http_err_io, http_fail_unit};
 use http::request::{concat_bytes};
 use http::response::{bytes_slice_resp, find_header_end, header_block_body_len, parse_chunk_size_line};
 
-/// A socket plus the bytes read past the current HTTP/1.1 message.
+/// A connection HTTP runs over: a plain TCP `Stream` or a `TlsStream`.
+///
+/// It reads, writes and closes as `io::Read`, `io::Write` and `io::Close`, so
+/// `io::sync::write_all` and the buffered reader take it, and `protocol` names
+/// the ALPN protocol a TLS handshake agreed on.
+///
+/// # Examples
+///
+/// ```no_run
+/// use io::net::tcp::{connect};
+/// use io::sync::{write_all};
+/// use string::{to_bytes};
+/// use http::conn::{Conn};
+///
+/// fn main() {
+///     let tcp = match connect("127.0.0.1", 8080) {
+///         Result::Ok(s) => s,
+///         Result::Err(e) => panic e.show(),
+///     };
+///     let c: Conn = tcp;
+///     // Plain TCP agrees on no ALPN protocol: `c.protocol()` is `""`.
+///     let _ = write_all(c, to_bytes("GET / HTTP/1.1\r\nHost: x\r\n\r\n"));
+///     let _ = c.close();
+/// }
+/// ```
+trait Conn<S: Read + Write + Close> {
+    /// The ALPN protocol the peers agreed on (`"h2"`), or `""` for none and
+    /// for plain TCP.
+    fn protocol(S s) -> string;
+}
+
+impl Conn for Stream {
+    fn protocol(Stream s) -> string {
+        return "";
+    }
+}
+
+impl Conn for TlsStream {
+    fn protocol(TlsStream s) -> string {
+        return match s.alpn() {
+            Result::Ok(p) => p,
+            Result::Err(_) => "",
+        };
+    }
+}
+
+impl Read for Conn {
+    fn read(Conn c, Vec<byte> buf) -> Result<Option<int>, IoError> {
+        return c.read(buf);
+    }
+
+    fn wait_readable(Conn c) -> Result<unit, IoError> {
+        return c.wait_readable();
+    }
+}
+
+impl Write for Conn {
+    fn write(Conn c, readonly Vec<byte> buf) -> Result<int, IoError> {
+        return c.write(buf);
+    }
+
+    fn wait_writable(Conn c) -> Result<unit, IoError> {
+        return c.wait_writable();
+    }
+
+    fn write_from(Conn c, readonly Vec<byte> buf, int offset) -> Result<int, IoError> {
+        return c.write_from(buf, offset);
+    }
+
+    fn flush(Conn c) -> Result<unit, IoError> {
+        return c.flush();
+    }
+}
+
+impl Close for Conn {
+    fn close(Conn c) -> Result<unit, IoError> {
+        return c.close();
+    }
+}
+
+/// A connection plus the bytes read past the current HTTP/1.1 message.
 ///
 /// `read_http_message` keeps any bytes after one message (a pipelined request or
 /// the next response) in `leftover` for the next read, so a keep-alive
 /// connection is read message by message. Used by `ConnPool`, the server loops
 /// and `WsConn`. Close it with `close_conn`.
 class HttpConn {
-    /// The underlying TCP or TLS stream.
-    pub inner: Stream,
+    /// The underlying TCP or TLS connection.
+    pub inner: Conn,
     /// Bytes already read that belong to the next message.
     pub leftover: Vec<byte>,
     /// 1 when the last message was framed and the connection can carry another.
@@ -28,21 +111,21 @@ fn close_conn(HttpConn c) {
         return;
     }
     c.closed = 1;
-    match close(c.inner) {
+    match c.inner.close() {
         Result::Ok(_) => 0,
         Result::Err(_) => 0,
     };
 }
 
 impl HttpConn {
-    /// Wraps an open stream with no buffered bytes.
-    pub static fn wrap(Stream s) -> HttpConn {
+    /// Wraps an open connection with no buffered bytes.
+    pub static fn wrap(Conn s) -> HttpConn {
         let leftover: Vec<byte> = Vec::new();
         return new HttpConn(s, leftover, 1, 0);
     }
 
-    /// The underlying stream, for writing.
-    pub fn stream() -> Stream {
+    /// The underlying connection, for writing.
+    pub fn stream() -> Conn {
         return self.inner;
     }
 
@@ -54,7 +137,7 @@ impl HttpConn {
     fn drop() {
         if self.closed == 0 {
             self.closed = 1;
-            match close(self.inner) {
+            match self.inner.close() {
                 Result::Ok(_) => 0,
                 Result::Err(_) => 0,
             };
@@ -234,10 +317,10 @@ fn read_http_message(HttpConn c) -> Result<Vec<byte>, HttpError> {
         }
         if done == 0 {
             let parked = 0;
-            let nopt = match read(c.inner, chunk) {
+            let nopt = match c.inner.read(chunk) {
                 Result::Ok(o) => o,
                 Result::Err(IoError::WouldBlock) => {
-                    match wait_readable(c.inner) {
+                    match c.inner.wait_readable() {
                         Result::Ok(_) => {
                             parked = 1;
                             guard = guard - 1;
@@ -270,7 +353,7 @@ fn read_http_message(HttpConn c) -> Result<Vec<byte>, HttpError> {
                         if acc.len() > 0 {
                             done = 1;
                         } else {
-                            match wait_readable(c.inner) {
+                            match c.inner.wait_readable() {
                                 Result::Ok(_) => {
                                     guard = guard - 1;
                                     0
@@ -311,8 +394,8 @@ fn read_http_message(HttpConn c) -> Result<Vec<byte>, HttpError> {
     return concat_bytes(head, body);
 }
 
-/// Reads one complete HTTP/1.1 message from a fresh stream `s`.
-fn read_request_bytes(Stream s) -> Result<Vec<byte>, HttpError> {
+/// Reads one complete HTTP/1.1 message from a fresh connection `s`.
+fn read_request_bytes(Conn s) -> Result<Vec<byte>, HttpError> {
     let c = HttpConn::wrap(s);
     return read_http_message(c)?;
 }

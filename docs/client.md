@@ -69,7 +69,7 @@ fn status_or_zero(Client client, string url) -> int {
         Result::Ok(r) => r.status,
         Result::Err(HttpError::Tls(TlsError::Certificate)) => 0,
         Result::Err(HttpError::Io(IoError::TimedOut)) => 0,
-        Result::Err(e) => panic show(e),
+        Result::Err(e) => panic e.show(),
     };
 }
 ```

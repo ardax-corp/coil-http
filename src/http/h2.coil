@@ -15,8 +15,8 @@ use http::url::{
 };
 use http::request::{build_request_head};
 use http::response::{Response, bytes_slice_resp, parse_response};
-use http::conn::{HttpConn, close_conn, read_http_message};
-use io::{Stream, close as io_close, read, IoError, wait_readable};
+use http::conn::{Conn, HttpConn, close_conn, read_http_message};
+use io::{IoError};
 use string::{to_bytes};
 use io::sync::{write_all};
 
@@ -720,15 +720,15 @@ fn h2_status_from_headers(Headers h) -> int {
     return 200;
 }
 
-fn h2_close(Stream s) {
-    match io_close(s) {
+fn h2_close(Conn s) {
+    match s.close() {
         Result::Ok(_) => 0,
         Result::Err(_) => 0,
     };
 }
 
 // `wait` 0: empty vec if no bytes are ready. Partial frames always wait to complete.
-fn h2_read_n_wait(Stream s, int n, int wait) -> Result<Vec<byte>, HttpError> {
+fn h2_read_n_wait(Conn s, int n, int wait) -> Result<Vec<byte>, HttpError> {
     if n == 0 {
         let empty: Vec<byte> = Vec::new();
         return empty;
@@ -749,7 +749,7 @@ fn h2_read_n_wait(Stream s, int n, int wait) -> Result<Vec<byte>, HttpError> {
             scratch.push(z);
             i = i + 1;
         }
-        match read(s, scratch) {
+        match s.read(scratch) {
             Result::Ok(opt) => {
                 match opt {
                     Option::None => {
@@ -769,7 +769,7 @@ fn h2_read_n_wait(Stream s, int n, int wait) -> Result<Vec<byte>, HttpError> {
                                     return empty;
                                 }
                             }
-                            match wait_readable(s) {
+                            match s.wait_readable() {
                                 Result::Ok(_) => 0,
                                 Result::Err(e) => {
                                     http_err_io(e)?;
@@ -796,7 +796,7 @@ fn h2_read_n_wait(Stream s, int n, int wait) -> Result<Vec<byte>, HttpError> {
                         return empty;
                     }
                 }
-                match wait_readable(s) {
+                match s.wait_readable() {
                     Result::Ok(_) => 0,
                     Result::Err(e) => {
                         http_err_io(e)?;
@@ -815,12 +815,12 @@ fn h2_read_n_wait(Stream s, int n, int wait) -> Result<Vec<byte>, HttpError> {
 }
 
 /// Reads exactly `n` bytes from `s`, waiting while none are ready. Returns `Protocol` at end of stream.
-fn h2_read_n(Stream s, int n) -> Result<Vec<byte>, HttpError> {
+fn h2_read_n(Conn s, int n) -> Result<Vec<byte>, HttpError> {
     return h2_read_n_wait(s, n, 1)?;
 }
 
 /// Writes the encoded frame `f` to `s`.
-fn h2_write_frame(Stream s, H2Frame f) -> Result<(), HttpError> {
+fn h2_write_frame(Conn s, H2Frame f) -> Result<(), HttpError> {
     match write_all(s, encode_frame(f)) {
         Result::Ok(_) => 0,
         Result::Err(e) => {
@@ -832,7 +832,7 @@ fn h2_write_frame(Stream s, H2Frame f) -> Result<(), HttpError> {
 }
 
 /// Reads one complete frame from `s`, waiting while none is ready.
-fn h2_read_frame(Stream s) -> Result<H2Frame, HttpError> {
+fn h2_read_frame(Conn s) -> Result<H2Frame, HttpError> {
     let hdr = h2_read_n(s, 9)?;
     let n = u8_at(hdr, 0) * 65536 + u8_at(hdr, 1) * 256 + u8_at(hdr, 2);
     let payload = h2_read_n(s, n)?;
@@ -844,7 +844,7 @@ fn h2_read_frame(Stream s) -> Result<H2Frame, HttpError> {
 }
 
 /// Reads one frame if its first byte is already available, otherwise returns `None` without waiting.
-fn h2_try_read_frame(Stream s) -> Result<Option<H2Frame>, HttpError> {
+fn h2_try_read_frame(Conn s) -> Result<Option<H2Frame>, HttpError> {
     let hdr = h2_read_n_wait(s, 9, 0)?;
     if hdr.len() == 0 {
         return Option::None;
@@ -867,7 +867,7 @@ fn h2_prior_knowledge_two_gets(Url a, Url b) -> Vec<byte> {
     return out;
 }
 
-fn h2_http11_exchange(Stream s, string method, Url u, Headers headers, Vec<byte> body) -> Result<Response, HttpError> {
+fn h2_http11_exchange(Conn s, string method, Url u, Headers headers, Vec<byte> body) -> Result<Response, HttpError> {
     let head = match build_request_head(method, u, headers, body.len()) {
         Result::Ok(v) => v,
         Result::Err(e) => {
