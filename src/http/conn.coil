@@ -65,7 +65,7 @@ impl Read for Conn {
 }
 
 impl Write for Conn {
-    fn write(Conn c, Vec<byte> buf) -> Result<int, IoError> {
+    fn write(Conn c, readonly Vec<byte> buf) -> Result<int, IoError> {
         return c.write(buf);
     }
 
@@ -73,7 +73,7 @@ impl Write for Conn {
         return c.wait_writable();
     }
 
-    fn write_from(Conn c, Vec<byte> buf, int offset) -> Result<int, IoError> {
+    fn write_from(Conn c, readonly Vec<byte> buf, int offset) -> Result<int, IoError> {
         return c.write_from(buf, offset);
     }
 
